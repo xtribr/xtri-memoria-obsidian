@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Obsidian local state
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+.trash/
+
+# Local environment and credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*token*
+*secret*
+
+# Temporary files
+*.tmp
+*.temp
