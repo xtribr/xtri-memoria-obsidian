@@ -114,3 +114,19 @@ Achados principais:
 - `correctAlternative` e `isCorrect` expostos publicamente.
 - CORS não liberou `https://xtri.online` nos testes.
 - Questões recentes podem ter `skill` e `param_b` nulos.
+
+## [2026-05-12] manutenção | Índices, status e mapa operacional
+
+Criadas notas estruturais para melhorar navegação e governança da wiki: índices por pasta crítica, convenções de status/evidência e mapa operacional de projetos.
+
+Notas criadas:
+
+- [[Índice - Produtos e Projetos]]
+- [[Mapa Operacional de Projetos XTRI]]
+- [[Índice - Dados e Fontes]]
+- [[Índice - ENEM, TRI e SISU]]
+- [[Convenções de Status e Evidência]]
+
+Observação:
+
+- O volume `/Volumes/KINGSTON` não estava montado durante a revisão; caminhos locais de projetos foram marcados como pendentes de confirmação, não como fatos verificados.

@@ -20,8 +20,11 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 
 ## Projetos e Ativos
 
+- [[Índice - Produtos e Projetos]] - índice da pasta de produtos, projetos e backlog.
 - [[Projetos Ativos]] - visão geral dos projetos mapeados.
+- [[Mapa Operacional de Projetos XTRI]] - mapa com caminho local, GitHub, Supabase, deploy, status e pendências.
 - [[Backlog - Banco de Questões]] - backlog priorizado a partir da auditoria do schema, API própria e requisitos.
+- [[Roadmap - Banco de Questões]] - fases propostas para segurança, consistência, produto e auditoria contínua.
 - [[Supabase - Inventário de Projetos]] - inventário dos projetos Supabase acessíveis pela CLI.
 - [[Supabase - Projeto qgqliquusdkkwnfuzdwi]] - projeto crítico `banco de dados INEP ENEM SISU`.
 - [[Supabase - banco de questões]] - projeto Supabase do banco de questões.
@@ -34,6 +37,7 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 
 ## Dados, Schema e Auditorias
 
+- [[Índice - Dados e Fontes]] - índice operacional de fontes, bancos, auditorias e pipelines de dados.
 - [[Fontes de Dados Oficiais]] - fontes permitidas e regras de uso.
 - [[Requisitos - Banco de Questões XTRI]] - requisitos técnicos para o banco de questões.
 - [[Checklist - Auditoria do Schema Banco de Questões]] - checklist de comparação entre requisito e schema real.
@@ -42,6 +46,7 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 
 ## ENEM, TRI e SISU
 
+- [[Índice - ENEM, TRI e SISU]] - índice do domínio ENEM/TRI/SISU e resumos de artigos.
 - [[Glossário ENEM, TRI e SISU]] - conceitos fundamentais.
 - [[Acervo de Artigos TRI e ENEM]] - localização e prioridade do acervo de PDFs.
 - [[Síntese - Artigos TRI e ENEM para XTRI]] - síntese transversal dos artigos com conexão de produto.
@@ -71,6 +76,7 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 
 - [[Regras Operacionais do Codex na XTRI]] - regras absolutas de trabalho.
 - [[LLM Wiki - Operação da Memória XTRI]] - ingest, query, lint, index e log.
+- [[Convenções de Status e Evidência]] - padrão para status, evidência, hipóteses e pendências.
 
 ## Stack e Infra
 
@@ -96,5 +102,5 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 
 - Falta auditar RLS/policies do Supabase `banco de questões` com `SUPABASE_DB_PASSWORD`.
 - Falta decidir política de exposição de gabarito da [[API Própria - Questões XTRI]].
-- Falta criar [[Roadmap - Banco de Questões]].
 - Falta criar notas individuais para decisões técnicas recentes.
+- Falta confirmar GitHub, deploy e caminhos locais no [[Mapa Operacional de Projetos XTRI]] quando o Kingston estiver montado.

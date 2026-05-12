@@ -9,11 +9,16 @@
 - [[Professor Xandão - Perfil e Papel]]
 - [[Stack Oficial da XTRI]]
 - [[Regras Operacionais do Codex na XTRI]]
+- [[Convenções de Status e Evidência]]
 - [[Glossário ENEM, TRI e SISU]]
+- [[Índice - ENEM, TRI e SISU]]
 - [[Acervo de Artigos TRI e ENEM]]
 - [[Síntese - Artigos TRI e ENEM para XTRI]]
+- [[Índice - Produtos e Projetos]]
 - [[Projetos Ativos]]
+- [[Mapa Operacional de Projetos XTRI]]
 - [[Backlog - Banco de Questões]]
+- [[Índice - Dados e Fontes]]
 - [[Fontes de Dados Oficiais]]
 - [[Supabase - Inventário de Projetos]]
 - [[Supabase - Projeto qgqliquusdkkwnfuzdwi]]
@@ -43,7 +48,7 @@
 
 - Criar [[Roadmap - Banco de Questões]]
 - Decidir política de exposição de gabarito da [[API Própria - Questões XTRI]]
-- Mapear projetos reais em andamento com repositório e status
+- Confirmar caminhos locais, repositórios e deploys no [[Mapa Operacional de Projetos XTRI]]
 - Cadastrar fontes de dados concretas com responsável e acesso
 - Registrar processos recorrentes da operação XTRI
 - Consolidar decisões de produto e arquitetura
