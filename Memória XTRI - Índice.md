@@ -9,6 +9,7 @@
 - [[Professor Xandão - Perfil e Papel]]
 - [[Stack Oficial da XTRI]]
 - [[Regras Operacionais do Codex na XTRI]]
+- [[Padrão - Mapeamento de Simulados ENEM Dia 1]]
 - [[Convenções de Status e Evidência]]
 - [[Glossário ENEM, TRI e SISU]]
 - [[Índice - ENEM, TRI e SISU]]

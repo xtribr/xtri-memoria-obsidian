@@ -130,3 +130,11 @@ Notas criadas:
 Observação:
 
 - O volume `/Volumes/KINGSTON` não estava montado durante a revisão; caminhos locais de projetos foram marcados como pendentes de confirmação, não como fatos verificados.
+
+## [2026-05-13] ingest | Padrão de mapeamento de simulados ENEM Dia 1
+
+Registrado padrão operacional validado para mapeamento do Dia 1 de simulados ENEM em planilha da XTRI, incluindo estrutura de colunas, contagem esperada, duplicação por idioma nas questões 1-5 e convenção de tópicos curtos.
+
+Nota principal:
+
+- [[Padrão - Mapeamento de Simulados ENEM Dia 1]]

@@ -77,6 +77,7 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 - [[Regras Operacionais do Codex na XTRI]] - regras absolutas de trabalho.
 - [[LLM Wiki - Operação da Memória XTRI]] - ingest, query, lint, index e log.
 - [[Convenções de Status e Evidência]] - padrão para status, evidência, hipóteses e pendências.
+- [[Padrão - Mapeamento de Simulados ENEM Dia 1]] - formato validado para planilha de mapeamento do D1.
 
 ## Stack e Infra
 
