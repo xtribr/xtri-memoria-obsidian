@@ -9,6 +9,7 @@ Status: ativo
 - Transformar [[09 - Benchmark REVI Devolutiva]] em template final de relatório XTRI.
 - Testar [[10 - Estratégia Sabiá para Correção]] com chamadas separadas por competência.
 - Usar [[11 - Formato Excel de Entrega]] no Caso 001.
+- Rodar [[12 - Integração Sabiá]] assim que tema e redação real estiverem em `entradas/caso-001/`.
 - Criar rubrica de baixa confiança para casos sem tema completo ou sem textos motivadores.
 - Definir formato final de relatório para aluno.
 - Avaliar se o Corretor X será apenas prompt/RAG ou se virará app Next.js com Supabase.

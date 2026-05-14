@@ -72,3 +72,4 @@ Sabiá-3 é relevante para contexto brasileiro e português, mas a própria nota
 - [[04 - Erros do Corretor X]]
 - [[06 - Decisões de Aprendizado]]
 - [[11 - Formato Excel de Entrega]]
+- [[12 - Integração Sabiá]]

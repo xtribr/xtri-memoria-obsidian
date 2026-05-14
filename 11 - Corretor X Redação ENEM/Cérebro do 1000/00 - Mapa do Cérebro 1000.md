@@ -17,6 +17,7 @@ O Cérebro 1000 é a camada de aprendizado controlado do Corretor X. Ele registr
 - [[09 - Benchmark REVI Devolutiva]]
 - [[10 - Estratégia Sabiá para Correção]]
 - [[11 - Formato Excel de Entrega]]
+- [[12 - Integração Sabiá]]
 
 ## Templates
 
@@ -50,3 +51,7 @@ O formato da REVI está registrado em [[09 - Benchmark REVI Devolutiva]]. A estr
 ## Entrega em Excel
 
 O modelo oficial de entrega e calibração está em [[11 - Formato Excel de Entrega]].
+
+## Execução com Sabiá
+
+O fluxo para chamar `sabia-4` e preencher o Excel está em [[12 - Integração Sabiá]].
