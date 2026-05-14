@@ -11,6 +11,11 @@ let package = Package(
         .executable(name: "XTRI-RED", targets: ["XTRIRed"])
     ],
     targets: [
-        .executableTarget(name: "XTRIRed")
+        .executableTarget(
+            name: "XTRIRed",
+            linkerSettings: [
+                .linkedFramework("Security")
+            ]
+        )
     ]
 )

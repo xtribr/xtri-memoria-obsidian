@@ -49,7 +49,11 @@ Observação: esta etapa cria um app clicável assinado ad-hoc para uso local. D
 
 ## Regra de segurança
 
-A chave `SABIA_API_KEY` não deve ser salva no Git. O app aceita a chave em campo seguro apenas para a sessão ou herda a variável de ambiente quando iniciado pelo terminal.
+A chave `SABIA_API_KEY` não deve ser hardcoded nem salva no Git.
+
+O app salva a chave no Keychain do macOS quando o usuário clica em `Salvar`. Em novas aberturas, o XTRI-RED carrega essa chave automaticamente e a passa ao runner apenas em variável de ambiente do processo.
+
+Também é possível apagar a chave pelo botão `Apagar` na interface.
 
 ## Conexões
 

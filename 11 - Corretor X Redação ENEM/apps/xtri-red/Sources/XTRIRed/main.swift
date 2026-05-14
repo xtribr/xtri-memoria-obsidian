@@ -1,4 +1,5 @@
 import AppKit
+import Security
 import SwiftUI
 
 private let defaultVaultPath = "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM"
@@ -39,6 +40,90 @@ struct ProcessResult: Sendable {
     let output: String
 }
 
+enum KeychainError: LocalizedError {
+    case unexpectedStatus(OSStatus)
+    case invalidData
+
+    var errorDescription: String? {
+        switch self {
+        case .unexpectedStatus(let status):
+            return "Keychain retornou status \(status)."
+        case .invalidData:
+            return "A chave salva no Keychain não pôde ser lida como texto."
+        }
+    }
+}
+
+enum KeychainStore {
+    private static let service = "online.xtri.red"
+    private static let apiKeyAccount = "SABIA_API_KEY"
+
+    static func readAPIKey() throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiKeyAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound {
+            return nil
+        }
+        guard status == errSecSuccess else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+        guard
+            let data = item as? Data,
+            let value = String(data: data, encoding: .utf8)
+        else {
+            throw KeychainError.invalidData
+        }
+        return value
+    }
+
+    static func saveAPIKey(_ value: String) throws {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiKeyAccount
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data
+        ]
+
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return
+        }
+        if updateStatus != errSecItemNotFound {
+            throw KeychainError.unexpectedStatus(updateStatus)
+        }
+
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw KeychainError.unexpectedStatus(addStatus)
+        }
+    }
+
+    static func deleteAPIKey() throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiKeyAccount
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var vaultPath = defaultVaultPath
@@ -46,6 +131,8 @@ final class AppModel: ObservableObject {
     @Published var prompts: [BrainPrompt] = []
     @Published var selectedCaseID: EssayCase.ID?
     @Published var apiKey = ""
+    @Published var keychainStatus = "Chave não salva."
+    @Published var hasSavedAPIKey = false
     @Published var log = "Pronto."
     @Published var isRunning = false
 
@@ -63,6 +150,7 @@ final class AppModel: ObservableObject {
     }
 
     init() {
+        loadAPIKeyFromKeychain(silent: true)
         refresh()
     }
 
@@ -88,6 +176,63 @@ final class AppModel: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             vaultPath = url.path
             refresh()
+        }
+    }
+
+    func saveAPIKeyToKeychain() {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            keychainStatus = "Digite a chave antes de salvar."
+            return
+        }
+
+        do {
+            try KeychainStore.saveAPIKey(trimmedKey)
+            apiKey = trimmedKey
+            hasSavedAPIKey = true
+            keychainStatus = "Chave salva no Keychain."
+            log = "SABIA_API_KEY salva no Keychain do macOS."
+        } catch {
+            keychainStatus = "Falha ao salvar chave."
+            log = error.localizedDescription
+        }
+    }
+
+    func loadAPIKeyFromKeychain(silent: Bool = false) {
+        do {
+            if let savedKey = try KeychainStore.readAPIKey(), !savedKey.isEmpty {
+                apiKey = savedKey
+                hasSavedAPIKey = true
+                keychainStatus = "Chave carregada do Keychain."
+                if !silent {
+                    log = "SABIA_API_KEY carregada do Keychain."
+                }
+            } else {
+                hasSavedAPIKey = false
+                keychainStatus = "Chave não salva."
+                if !silent {
+                    log = "Nenhuma chave encontrada no Keychain."
+                }
+            }
+        } catch {
+            hasSavedAPIKey = false
+            keychainStatus = "Falha ao carregar chave."
+            if !silent {
+                log = error.localizedDescription
+            }
+        }
+    }
+
+    func deleteAPIKeyFromKeychain() {
+        do {
+            try KeychainStore.deleteAPIKey()
+            apiKey = ""
+            hasSavedAPIKey = false
+            keychainStatus = "Chave apagada do Keychain."
+            log = "SABIA_API_KEY apagada do Keychain."
+        } catch {
+            keychainStatus = "Falha ao apagar chave."
+            log = error.localizedDescription
         }
     }
 
@@ -347,6 +492,21 @@ struct ContentView: View {
                 SecureField("SABIA_API_KEY", text: $model.apiKey)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 280)
+                HStack(spacing: 8) {
+                    Text(model.keychainStatus)
+                        .font(.caption)
+                        .foregroundStyle(model.hasSavedAPIKey ? .green : .secondary)
+                    Button("Salvar") {
+                        model.saveAPIKeyToKeychain()
+                    }
+                    Button("Carregar") {
+                        model.loadAPIKeyFromKeychain()
+                    }
+                    Button("Apagar") {
+                        model.deleteAPIKeyFromKeychain()
+                    }
+                    .disabled(!model.hasSavedAPIKey)
+                }
                 HStack {
                     Button("Dry-run") {
                         model.runSelectedCase(dryRun: true)

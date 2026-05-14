@@ -35,4 +35,4 @@ Este app é assinado ad-hoc para uso local. Para distribuição externa, ainda s
 
 ## Segurança
 
-A chave `SABIA_API_KEY` não é salva pelo app. Ela pode ser digitada no campo seguro da interface ou herdada do ambiente quando o app é iniciado pelo terminal.
+A chave `SABIA_API_KEY` não deve ser hardcoded nem salva no Git. O app permite salvar a chave no Keychain do macOS pelo botão `Salvar`; nas próximas aberturas, ela é carregada automaticamente. Também é possível usar a variável de ambiente quando o app é iniciado pelo terminal.
