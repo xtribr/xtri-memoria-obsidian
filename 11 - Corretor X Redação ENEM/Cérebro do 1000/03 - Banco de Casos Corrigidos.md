@@ -8,7 +8,8 @@ Registrar cada redação real usada para calibrar o Corretor X.
 
 ## Casos
 
-- [[Caso 001 - Primeira Redação]] - aguardando arquivo real da primeira redação.
+- [[Caso 001 - Primeira Redação]] - entrada real recebida; aguardando tema oficial e correção Sabiá.
+- [[Caso 002 - Envelhecimento na Sociedade Brasileira]] - entrada real recebida; tema informado; pronta para correção Sabiá.
 
 ## Critério de entrada
 

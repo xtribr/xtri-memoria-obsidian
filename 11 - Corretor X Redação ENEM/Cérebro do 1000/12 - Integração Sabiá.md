@@ -71,6 +71,21 @@ Para testar caminhos sem chamar a API:
 CORRETOR_X_DRY_RUN=1 "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/scripts/run_caso001_sabia.sh"
 ```
 
+## Rodar qualquer caso
+
+Use o runner genérico com o diretório do caso, o ID do caso e o identificador anonimizado do aluno:
+
+```bash
+export SABIA_API_KEY="sua_chave_aqui"
+"/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/scripts/run_caso_sabia.sh" caso-002 CASO-002 "Aluno 002"
+```
+
+Para validar sem API:
+
+```bash
+CORRETOR_X_DRY_RUN=1 "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/scripts/run_caso_sabia.sh" caso-002 CASO-002 "Aluno 002"
+```
+
 Comando manual, caso esteja dentro da pasta `11 - Corretor X Redação ENEM`:
 
 ```bash
