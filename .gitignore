@@ -28,3 +28,8 @@ venv/
 # Temporary files
 *.tmp
 *.temp
+
+# Swift / macOS app build output
+.build/
+.swiftpm/
+DerivedData/

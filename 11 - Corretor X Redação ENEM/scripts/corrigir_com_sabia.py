@@ -80,6 +80,13 @@ def read_text(path: Path) -> str:
     return text
 
 
+def load_competencia_prompt(competencia: str, prompts_dir: Path) -> str:
+    prompt_path = prompts_dir / f"{competencia.lower()}.md"
+    if prompt_path.exists():
+        return read_text(prompt_path)
+    return RUBRICAS[competencia]
+
+
 def extract_json(content: str) -> dict[str, Any]:
     content = content.strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
@@ -93,7 +100,7 @@ def extract_json(content: str) -> dict[str, Any]:
     return json.loads(content)
 
 
-def build_prompt(competencia: str, tema: str, redacao: str, status_ocr: str) -> str:
+def build_prompt(competencia: str, tema: str, redacao: str, status_ocr: str, rubrica: str) -> str:
     return f"""
 Você é o Corretor X da XTRI EdTECH, especializado em redação do ENEM.
 
@@ -105,7 +112,7 @@ Autoridade metodológica:
 - Redações nota 1000 servem como referência de padrão, não como regra absoluta.
 
 Rubrica da competência:
-{RUBRICAS[competencia]}
+{rubrica}
 
 Regras obrigatórias:
 - Não invente tema, texto motivador, erro, repertório ou dado.
@@ -224,6 +231,12 @@ def main() -> int:
     parser.add_argument("--retries", default=1, type=int)
     parser.add_argument("--dry-run", action="store_true", help="Não chama API; só valida entradas.")
     parser.add_argument(
+        "--brain-prompts-dir",
+        type=Path,
+        default=Path("app-config/prompts"),
+        help="Diretório do vault com prompts/rubricas por competência.",
+    )
+    parser.add_argument(
         "--template-xlsx",
         type=Path,
         default=Path("Cérebro do 1000/templates/Template - Entrega Excel Corretor X.xlsx"),
@@ -252,7 +265,8 @@ def main() -> int:
 
     avaliacoes: list[AvaliacaoCompetencia] = []
     for competencia in COMPETENCIAS:
-        prompt = build_prompt(competencia, tema, redacao, args.status_ocr)
+        rubrica = load_competencia_prompt(competencia, args.brain_prompts_dir)
+        prompt = build_prompt(competencia, tema, redacao, args.status_ocr, rubrica)
         content = call_sabia(api_key, args.model, prompt, args.timeout, args.retries)
         raw = extract_json(content)
         avaliacoes.append(normalize_avaliacao(raw, competencia))

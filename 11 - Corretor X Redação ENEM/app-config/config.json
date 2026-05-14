@@ -1,0 +1,12 @@
+{
+  "name": "Corretor X",
+  "brainVersion": "0.1",
+  "vaultRelativePaths": {
+    "entries": "entradas",
+    "exports": "Cérebro do 1000/casos/exports",
+    "cases": "Cérebro do 1000/casos",
+    "prompts": "app-config/prompts"
+  },
+  "defaultModel": "sabia-4",
+  "scoreBands": [0, 40, 80, 120, 160, 200]
+}
