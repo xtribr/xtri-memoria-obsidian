@@ -1,26 +1,37 @@
 # Caso 001 - Primeira Redação
 
-Status: aguardando redação real
+Status: entrada real recebida; aguardando tema oficial e correção Sabiá
 
 ## Fonte
 
-Pendente.
+Imagem real recebida e armazenada localmente em área privada ignorada pelo Git:
+
+- `entradas/caso-001/redacao-original.jpeg`
 
 ## OCR
 
-Pendente. Ver [[07 - Pipeline OCR]].
+Transcrição manual assistida por imagem, sem OCR automático disponível neste ambiente. Revisão humana necessária antes de usar como base definitiva.
+
+Arquivos locais privados:
+
+- `entradas/caso-001/redacao.txt`
+- `entradas/caso-001/status-ocr.txt`
 
 ## Tema
 
-Pendente.
+Tema oficial ainda não informado.
+
+Arquivo local criado com limitação explícita:
+
+- `entradas/caso-001/tema.txt`
 
 ## Redação transcrita
 
-Pendente.
+Disponível apenas em arquivo privado ignorado pelo Git. Não republicar no vault.
 
 ## Correção do Corretor X
 
-Pendente.
+Pendente de execução com Sabiá após confirmação/revisão da transcrição e envio do tema oficial.
 
 | Competência | Nota estimada | Evidência | Justificativa |
 |---|---:|---|---|
