@@ -50,6 +50,7 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 - [[Glossário ENEM, TRI e SISU]] - conceitos fundamentais.
 - [[Acervo de Artigos TRI e ENEM]] - localização e prioridade do acervo de PDFs.
 - [[Síntese - Artigos TRI e ENEM para XTRI]] - síntese transversal dos artigos com conexão de produto.
+- [Corretor X Redação ENEM](11%20-%20Corretor%20X%20Reda%C3%A7%C3%A3o%20ENEM/index.html) - base HTML para corretor pedagógico de redação com manual oficial, padrões nota 1000, protocolo e prompt operacional.
 
 ## Resumos de Artigos
 

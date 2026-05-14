@@ -138,3 +138,20 @@ Registrado padrão operacional validado para mapeamento do Dia 1 de simulados EN
 Nota principal:
 
 - [[Padrão - Mapeamento de Simulados ENEM Dia 1]]
+
+## [2026-05-14] ingest | Corretor X Redação ENEM
+
+Criado vault/classe de conteúdo HTML para o Corretor X de redação ENEM, com base na cartilha oficial do participante 2025 e nas cartilhas Redação a Mil disponíveis no diretório de trabalho.
+
+Ativo principal:
+
+- [Corretor X Redação ENEM](11%20-%20Corretor%20X%20Reda%C3%A7%C3%A3o%20ENEM/index.html)
+
+Fontes brutas:
+
+- `11 - Corretor X Redação ENEM/fontes/pdfs/`
+
+Observações:
+
+- O HTML registra sínteses, padrões e protocolo; não republica transcrições integrais das redações nota 1000.
+- A cartilha oficial do Inep permanece como autoridade normativa; as cartilhas nota 1000 são referência de padrões, não regra oficial.
