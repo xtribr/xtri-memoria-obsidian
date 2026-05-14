@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
-swift run
+swift run XTRI-RED

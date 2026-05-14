@@ -1,12 +1,12 @@
-# Corretor X Mac
+# XTRI-RED
 
-App nativo macOS em SwiftUI para operar o Corretor X usando o vault do Obsidian como cérebro.
+App nativo macOS em SwiftUI para operar correções de redação ENEM usando o vault do Obsidian como cérebro.
 
 ## Rodar em desenvolvimento
 
 ```bash
-cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/apps/corretor-x-mac"
-swift run
+cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/apps/xtri-red"
+swift run XTRI-RED
 ```
 
 ## Função deste primeiro corte

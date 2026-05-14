@@ -3,14 +3,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "CorretorXMac",
+    name: "XTRIRED",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "CorretorXMac", targets: ["CorretorXMac"])
+        .executable(name: "XTRI-RED", targets: ["XTRIRed"])
     ],
     targets: [
-        .executableTarget(name: "CorretorXMac")
+        .executableTarget(name: "XTRIRed")
     ]
 )

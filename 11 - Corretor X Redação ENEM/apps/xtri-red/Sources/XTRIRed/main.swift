@@ -4,7 +4,7 @@ import SwiftUI
 private let defaultVaultPath = "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM"
 
 @main
-struct CorretorXMacApp: App {
+struct XTRIRedApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -80,7 +80,7 @@ final class AppModel: ObservableObject {
 
     func chooseVault() {
         let panel = NSOpenPanel()
-        panel.title = "Selecionar vault do Corretor X"
+        panel.title = "Selecionar vault do XTRI-RED"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
@@ -309,7 +309,7 @@ struct ContentView: View {
                 }
             }
         }
-        .navigationTitle("Corretor X")
+        .navigationTitle("XTRI-RED")
     }
 
     @ViewBuilder
