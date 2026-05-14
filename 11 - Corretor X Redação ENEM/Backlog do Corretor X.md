@@ -8,6 +8,7 @@ Status: ativo
 - Registrar a primeira redação em [[Caso 001 - Primeira Redação]].
 - Transformar [[09 - Benchmark REVI Devolutiva]] em template final de relatório XTRI.
 - Testar [[10 - Estratégia Sabiá para Correção]] com chamadas separadas por competência.
+- Usar [[11 - Formato Excel de Entrega]] no Caso 001.
 - Criar rubrica de baixa confiança para casos sem tema completo ou sem textos motivadores.
 - Definir formato final de relatório para aluno.
 - Avaliar se o Corretor X será apenas prompt/RAG ou se virará app Next.js com Supabase.

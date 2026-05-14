@@ -31,8 +31,13 @@ Cada erro recorrente deve gerar:
 - ajuste em [[Protocolo de Correção]];
 - registro em [[06 - Decisões de Aprendizado]].
 
+## Planilha operacional
+
+A calibração deve ser acompanhada no [Template - Entrega Excel Corretor X.xlsx](templates/Template%20-%20Entrega%20Excel%20Corretor%20X.xlsx), conforme [[11 - Formato Excel de Entrega]].
+
 ## Conexões
 
 - [[03 - Banco de Casos Corrigidos]]
 - [[04 - Erros do Corretor X]]
 - [[01 - Rubrica Mestra ENEM]]
+- [[11 - Formato Excel de Entrega]]

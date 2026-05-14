@@ -20,7 +20,8 @@ Sabiá-3 é relevante para contexto brasileiro e português, mas a própria nota
 6. Revisão crítica da pontuação.
 7. Geração da devolutiva final.
 8. Registro em [[03 - Banco de Casos Corrigidos]].
-9. Comparação com validação humana em [[05 - Calibração por Competência]].
+9. Entrega no formato [[11 - Formato Excel de Entrega]].
+10. Comparação com validação humana em [[05 - Calibração por Competência]].
 
 ## Papel ideal do Sabiá
 
@@ -53,6 +54,7 @@ Sabiá-3 é relevante para contexto brasileiro e português, mas a própria nota
 9. Três prioridades de reescrita.
 10. Alertas de baixa confiança.
 11. Registro para calibração.
+12. Exportação ou preenchimento do Excel oficial.
 
 ## Benchmark mínimo antes de produção
 
@@ -69,3 +71,4 @@ Sabiá-3 é relevante para contexto brasileiro e português, mas a própria nota
 - [[01 - Rubrica Mestra ENEM]]
 - [[04 - Erros do Corretor X]]
 - [[06 - Decisões de Aprendizado]]
+- [[11 - Formato Excel de Entrega]]

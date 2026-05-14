@@ -32,9 +32,14 @@ Um caso só entra como validado quando houver:
 - Diferenças.
 - Aprendizado aceito ou rejeitado.
 
+## Entrega em Excel
+
+Cada caso validado também deve ser registrado no [Template - Entrega Excel Corretor X.xlsx](templates/Template%20-%20Entrega%20Excel%20Corretor%20X.xlsx), seguindo [[11 - Formato Excel de Entrega]].
+
 ## Conexões
 
 - [[Template - Caso Corrigido]]
 - [[04 - Erros do Corretor X]]
 - [[06 - Decisões de Aprendizado]]
 - [[08 - Política de Dados dos Casos]]
+- [[11 - Formato Excel de Entrega]]
