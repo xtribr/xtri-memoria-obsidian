@@ -14,6 +14,8 @@ O Cérebro 1000 é a camada de aprendizado controlado do Corretor X. Ele registr
 - [[06 - Decisões de Aprendizado]]
 - [[07 - Pipeline OCR]]
 - [[08 - Política de Dados dos Casos]]
+- [[09 - Benchmark REVI Devolutiva]]
+- [[10 - Estratégia Sabiá para Correção]]
 
 ## Templates
 
@@ -39,3 +41,7 @@ O Cérebro 1000 é a camada de aprendizado controlado do Corretor X. Ele registr
 O sistema só aprende a partir de evidência real e validação humana ou nota real autorizada. Hipótese não vira regra.
 
 Arquivos brutos de alunos devem seguir [[08 - Política de Dados dos Casos]].
+
+## Benchmark externo
+
+O formato da REVI está registrado em [[09 - Benchmark REVI Devolutiva]]. A estratégia de uso do Sabiá está em [[10 - Estratégia Sabiá para Correção]].
