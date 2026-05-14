@@ -9,6 +9,22 @@ cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corret
 swift run XTRI-RED
 ```
 
+## Gerar app clicável
+
+```bash
+cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/apps/xtri-red"
+./package_app.sh
+open "dist/XTRI-RED.app"
+```
+
+O bundle local fica em:
+
+```text
+dist/XTRI-RED.app
+```
+
+Este app é assinado ad-hoc para uso local. Para distribuição externa, ainda será necessário assinar com certificado Apple Developer e notarizar.
+
 ## Função deste primeiro corte
 
 - Ler casos em `entradas/caso-*`.

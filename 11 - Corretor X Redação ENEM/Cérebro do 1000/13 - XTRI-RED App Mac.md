@@ -1,6 +1,6 @@
 # XTRI-RED App Mac
 
-Status: protótipo funcional
+Status: app macOS local empacotável
 
 ## Objetivo
 
@@ -34,6 +34,18 @@ O Obsidian continua sendo a fonte de governança:
 cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/apps/xtri-red"
 swift run XTRI-RED
 ```
+
+## Gerar app oficial local
+
+```bash
+cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/apps/xtri-red"
+./package_app.sh
+open "dist/XTRI-RED.app"
+```
+
+O bundle local fica em `apps/xtri-red/dist/XTRI-RED.app`.
+
+Observação: esta etapa cria um app clicável assinado ad-hoc para uso local. Distribuição fora deste Mac ainda exige assinatura com certificado Apple Developer e notarização.
 
 ## Regra de segurança
 
