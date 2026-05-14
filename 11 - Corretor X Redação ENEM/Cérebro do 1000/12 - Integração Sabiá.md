@@ -20,12 +20,13 @@ Use variável de ambiente:
 export SABIA_API_KEY="sua_chave_aqui"
 ```
 
-## Pré-requisito local
+## Ambiente virtual local
 
-O script usa `openpyxl` para preencher o Excel:
+O ambiente virtual principal fica na raiz do projeto:
 
 ```bash
-python3 -m pip install -r scripts/requirements.txt
+cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação"
+.venv/bin/python -m pip install -r "corretor x/11 - Corretor X Redação ENEM/scripts/requirements.txt"
 ```
 
 ## Preparação do Caso 001
@@ -33,6 +34,7 @@ python3 -m pip install -r scripts/requirements.txt
 Criar arquivos locais ignorados pelo Git:
 
 ```bash
+cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM"
 mkdir -p entradas/caso-001
 ```
 
@@ -46,7 +48,7 @@ Se a redação vier por imagem ou PDF escaneado, seguir [[07 - Pipeline OCR]] an
 ## Comando de teste sem API
 
 ```bash
-python3 scripts/corrigir_com_sabia.py \
+../../.venv/bin/python scripts/corrigir_com_sabia.py \
   --tema-file entradas/caso-001/tema.txt \
   --redacao-file entradas/caso-001/redacao.txt \
   --case-id CASO-001 \
@@ -57,7 +59,7 @@ python3 scripts/corrigir_com_sabia.py \
 ## Comando de correção real
 
 ```bash
-python3 scripts/corrigir_com_sabia.py \
+../../.venv/bin/python scripts/corrigir_com_sabia.py \
   --tema-file entradas/caso-001/tema.txt \
   --redacao-file entradas/caso-001/redacao.txt \
   --case-id CASO-001 \
