@@ -58,6 +58,21 @@ Se a redação vier por imagem ou PDF escaneado, seguir [[07 - Pipeline OCR]] an
 
 ## Comando de correção real
 
+Atalho recomendado, funciona a partir de qualquer diretório:
+
+```bash
+export SABIA_API_KEY="sua_chave_aqui"
+"/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/scripts/run_caso001_sabia.sh"
+```
+
+Para testar caminhos sem chamar a API:
+
+```bash
+CORRETOR_X_DRY_RUN=1 "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM/scripts/run_caso001_sabia.sh"
+```
+
+Comando manual, caso esteja dentro da pasta `11 - Corretor X Redação ENEM`:
+
 ```bash
 ../../.venv/bin/python scripts/corrigir_com_sabia.py \
   --tema-file entradas/caso-001/tema.txt \
