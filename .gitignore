@@ -8,6 +8,11 @@
 11 - Corretor X Redação ENEM/.obsidian/
 .trash/
 
+# Corretor X private student inputs
+11 - Corretor X Redação ENEM/entradas/
+11 - Corretor X Redação ENEM/Cérebro do 1000/casos/originais/
+11 - Corretor X Redação ENEM/Cérebro do 1000/casos/transcricoes-privadas/
+
 # Local environment and credentials
 .env
 .env.*

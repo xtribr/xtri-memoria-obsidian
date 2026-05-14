@@ -5,6 +5,7 @@ Status: ativo
 ## Próximas ações
 
 - Testar [[Protocolo de Correção]] com uma redação real fornecida pelo Professor Xandão.
+- Registrar a primeira redação em [[Caso 001 - Primeira Redação]].
 - Criar rubrica de baixa confiança para casos sem tema completo ou sem textos motivadores.
 - Definir formato final de relatório para aluno.
 - Avaliar se o Corretor X será apenas prompt/RAG ou se virará app Next.js com Supabase.
@@ -20,3 +21,4 @@ Status: ativo
 - [[Mapa do Corretor X]]
 - [[Instruções do Corretor X]]
 - [[Prompt Operacional]]
+- [[00 - Mapa do Cérebro 1000]]

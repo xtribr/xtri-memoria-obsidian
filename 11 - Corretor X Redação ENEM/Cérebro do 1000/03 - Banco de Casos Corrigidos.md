@@ -1,0 +1,40 @@
+# Banco de Casos Corrigidos
+
+Status: ativo
+
+## Objetivo
+
+Registrar cada redação real usada para calibrar o Corretor X.
+
+## Casos
+
+- [[Caso 001 - Primeira Redação]] - aguardando arquivo real da primeira redação.
+
+## Critério de entrada
+
+Um caso só entra como validado quando houver:
+
+- redação real;
+- tema completo;
+- correção do Corretor X;
+- correção humana, nota real ou revisão validada pelo Professor Xandão;
+- análise das diferenças por competência.
+- conformidade com [[08 - Política de Dados dos Casos]].
+
+## Campos obrigatórios por caso
+
+- Fonte da redação.
+- Situação de OCR.
+- Tema.
+- Texto transcrito.
+- Correção estimada.
+- Correção validada.
+- Diferenças.
+- Aprendizado aceito ou rejeitado.
+
+## Conexões
+
+- [[Template - Caso Corrigido]]
+- [[04 - Erros do Corretor X]]
+- [[06 - Decisões de Aprendizado]]
+- [[08 - Política de Dados dos Casos]]

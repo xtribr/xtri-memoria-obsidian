@@ -14,6 +14,7 @@ Este vault é o cérebro isolado do projeto Corretor X, focado em correção ped
 - [[Prompt Operacional]]
 - [[Fontes do Corretor X]]
 - [[Backlog do Corretor X]]
+- [[00 - Mapa do Cérebro 1000]]
 
 ## HTML principal
 
@@ -28,3 +29,7 @@ Este vault é o cérebro isolado do projeto Corretor X, focado em correção ped
 ## Regra central
 
 A cartilha oficial do Inep é a referência normativa. As redações nota 1000 são amostras de padrão de alto desempenho, não regras oficiais nem modelos para cópia.
+
+## Próxima fase
+
+O [[00 - Mapa do Cérebro 1000]] registra casos reais, erros do corretor e decisões de aprendizado para calibrar a correção ao longo do tempo.
