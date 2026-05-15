@@ -106,9 +106,14 @@ struct OpenAIVisionOCRPayload: Decodable {
     let engine: String?
     let model: String?
     let text: String
+    let initialText: String?
     let characterCount: Int
     let lineCount: Int
     let paragraphCount: Int?
+    let confidence: String?
+    let similarity: Double?
+    let safeForCorrection: Bool?
+    let criticalSpans: [String]?
     let uncertainSpans: [String]?
     let uncertainWords: [UncertainWord]?
     let notes: String?
@@ -120,9 +125,14 @@ struct OpenAIVisionOCRPayload: Decodable {
         case engine
         case model
         case text
+        case initialText = "initial_text"
         case characterCount = "character_count"
         case lineCount = "line_count"
         case paragraphCount = "paragraph_count"
+        case confidence
+        case similarity
+        case safeForCorrection = "safe_for_correction"
+        case criticalSpans = "critical_spans"
         case uncertainSpans = "uncertain_spans"
         case uncertainWords = "uncertain_words"
         case notes
@@ -805,6 +815,9 @@ enum CaseImporter {
             let status = openAIResult.status ?? "parcial: transcricao automatica por OpenAI Vision; revisar literalmente antes de corrigir."
             try write(openAIResult.text, to: caseURL.appendingPathComponent("redacao.txt"))
             try write(openAIResult.text, to: caseURL.appendingPathComponent("redacao-openai-vision.txt"))
+            if let initialText = openAIResult.initialText, !initialText.isEmpty {
+                try write(initialText, to: caseURL.appendingPathComponent("redacao-openai-vision-inicial.txt"))
+            }
             try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
             try write(openAIVisionOCRMetadata(openAIResult), to: caseURL.appendingPathComponent("ocr-openai-vision.json"))
             return OCRResult(
@@ -910,6 +923,10 @@ enum CaseImporter {
             "character_count": "\(payload.characterCount)",
             "line_count": "\(payload.lineCount)",
             "paragraph_count": payload.paragraphCount.map { "\($0)" } ?? "",
+            "confidence": payload.confidence ?? "",
+            "similarity": payload.similarity.map { "\($0)" } ?? "",
+            "safe_for_correction": payload.safeForCorrection.map { "\($0)" } ?? "",
+            "critical_spans": (payload.criticalSpans ?? []).joined(separator: " | "),
             "uncertain_spans": (payload.uncertainSpans ?? []).joined(separator: " | "),
             "uncertain_words": uncertainWords,
             "notes": payload.notes ?? "",

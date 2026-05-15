@@ -287,3 +287,16 @@ Regras adicionadas:
 - preservar quebras de linha internas e separação de parágrafos;
 - marcar palavras incertas com motivo de incerteza;
 - reforçar que a transcrição não pode corrigir, normalizar ou completar o texto do aluno.
+
+## [2026-05-15] change | OCR Seguro com auditoria visual
+
+Implementado fluxo de OCR Seguro para escala.
+
+Comportamento:
+
+- primeira chamada OpenAI Vision faz transcrição literal;
+- segunda chamada audita a transcrição contra a imagem original;
+- o script calcula similaridade entre leitura inicial e leitura validada;
+- a saída registra `confidence`, `similarity`, `safe_for_correction`, divergências e trechos críticos;
+- apenas casos com confiança alta, similaridade mínima, parágrafos suficientes e sem trechos críticos recebem `status ok`;
+- casos inseguros ficam `parcial` e seguem para fila de revisão ou reenvio de imagem.

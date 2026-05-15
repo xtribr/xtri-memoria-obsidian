@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Transcrição literal de imagem manuscrita com modelo OpenAI Vision.
+"""OCR Seguro com OpenAI Vision para redações manuscritas.
 
-Saída: JSON em stdout, sem texto extra. A transcrição continua como rascunho:
-o XTRI-RED exige revisão humana antes de liberar correção.
+Fluxo:
+1. Transcrição literal inicial.
+2. Auditoria visual independente usando a imagem + transcrição inicial.
+3. Comparação automática para decidir se a transcrição pode ser liberada em lote.
+
+Mesmo quando o status sai como `ok`, os arquivos de auditoria preservam a leitura
+inicial e a leitura validada para rastreabilidade pedagógica.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ import base64
 import json
 import mimetypes
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -20,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 
-PROMPT = """Você é um transcritor literal de redações manuscritas do ENEM em português brasileiro.
+TRANSCRIPTION_PROMPT = """Você é um transcritor literal de redações manuscritas do ENEM em português brasileiro.
 
 TAREFA
 Transcreva exatamente o texto manuscrito pelo participante na área de redação.
@@ -64,6 +70,47 @@ Retorne apenas JSON válido:
 """
 
 
+def audit_prompt(initial_text: str) -> str:
+    return f"""Você é o auditor de OCR Seguro da XTRI.
+
+TAREFA
+Compare a imagem original com a transcrição inicial abaixo. Sua função é detectar se a transcrição preserva literalmente o manuscrito, incluindo erros, acentos, hífens, linhas e parágrafos.
+
+REGRAS
+- Não corrija o aluno para português padrão.
+- Corrija apenas erros de OCR, quando a imagem deixar claro que a transcrição inicial leu errado.
+- Preserve erros reais do aluno.
+- Preserve parágrafos com linha em branco entre blocos.
+- Marque trechos ilegíveis como [ilegível].
+- Se houver dúvida, mantenha marcação [?] e reduza a confiança.
+- Se a transcrição inicial estiver muito instável, retorne confiança baixa.
+- Só use confiança alta quando a leitura estiver literal e estável o suficiente para correção automática em lote.
+
+TRANSCRIÇÃO INICIAL
+{initial_text}
+
+FORMATO DE SAÍDA
+Retorne apenas JSON válido:
+{{
+  "texto_validado": "transcrição literal auditada",
+  "confianca": "alta|media|baixa",
+  "pronto_para_correcao": false,
+  "linhas_estimadas": 0,
+  "paragrafos_estimados": 0,
+  "divergencias": [
+    {{
+      "tipo": "palavra|acentuacao|pontuacao|linha|paragrafo|omissao|adicao|ilegivel",
+      "transcricao_inicial": "trecho inicial",
+      "leitura_validada": "trecho auditado",
+      "motivo": "explicação curta"
+    }}
+  ],
+  "trechos_criticos": ["trechos que exigiriam revisão humana"],
+  "observacoes": "breve nota de auditoria"
+}}
+"""
+
+
 def image_to_data_url(path: Path) -> str:
     mime_type, _ = mimetypes.guess_type(path.name)
     if mime_type not in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
@@ -101,19 +148,15 @@ def parse_model_json(raw_text: str) -> dict[str, Any]:
     return json.loads(text)
 
 
-def request_transcription(image_path: Path, model: str, api_key: str) -> dict[str, Any]:
+def call_vision(prompt: str, image_data_url: str, model: str, api_key: str) -> dict[str, Any]:
     payload = {
         "model": model,
         "input": [
             {
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": PROMPT},
-                    {
-                        "type": "input_image",
-                        "image_url": image_to_data_url(image_path),
-                        "detail": "high",
-                    },
+                    {"type": "input_text", "text": prompt},
+                    {"type": "input_image", "image_url": image_data_url, "detail": "high"},
                 ],
             }
         ],
@@ -129,40 +172,152 @@ def request_transcription(image_path: Path, model: str, api_key: str) -> dict[st
         method="POST",
     )
 
-    with urllib.request.urlopen(request, timeout=120) as response:
+    with urllib.request.urlopen(request, timeout=180) as response:
         data = json.loads(response.read().decode("utf-8"))
+    return parse_model_json(extract_output_text(data))
 
-    model_text = extract_output_text(data)
-    parsed = parse_model_json(model_text)
-    literal_text = str(parsed.get("texto", "")).strip()
-    uncertain = parsed.get("trechos_incertos", [])
-    if not isinstance(uncertain, list):
-        uncertain = []
-    uncertain_words = parsed.get("palavras_incertas", [])
-    if not isinstance(uncertain_words, list):
-        uncertain_words = []
+
+def paragraph_count(text: str) -> int:
+    return len([block for block in text.split("\n\n") if block.strip()])
+
+
+def normalized_for_similarity(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def similarity_ratio(left: str, right: str) -> float:
+    left = normalized_for_similarity(left)
+    right = normalized_for_similarity(right)
+    if not left and not right:
+        return 1.0
+    if not left or not right:
+        return 0.0
+
+    previous = list(range(len(right) + 1))
+    for i, char_left in enumerate(left, start=1):
+        current = [i]
+        for j, char_right in enumerate(right, start=1):
+            insert_cost = current[j - 1] + 1
+            delete_cost = previous[j] + 1
+            replace_cost = previous[j - 1] + (char_left != char_right)
+            current.append(min(insert_cost, delete_cost, replace_cost))
+        previous = current
+    distance = previous[-1]
+    return round(1 - distance / max(len(left), len(right)), 4)
+
+
+def as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def int_or_default(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def is_safe_for_correction(
+    text: str,
+    confidence: str,
+    similarity: float,
+    divergences: list[Any],
+    critical_spans: list[Any],
+    paragraphs: int,
+) -> bool:
+    if len(text) < 500:
+        return False
+    if confidence != "alta":
+        return False
+    if similarity < 0.90:
+        return False
+    if paragraphs < 3:
+        return False
+    if len(critical_spans) > 0:
+        return False
+    if len(divergences) > 8:
+        return False
+    if "[ilegível]" in text.lower():
+        return False
+    return True
+
+
+def request_secure_transcription(image_path: Path, model: str, api_key: str) -> dict[str, Any]:
+    image_data_url = image_to_data_url(image_path)
+
+    initial = call_vision(TRANSCRIPTION_PROMPT, image_data_url, model, api_key)
+    initial_text = str(initial.get("texto", "")).strip()
+    if not initial_text:
+        return {
+            "ok": False,
+            "engine": "openai_vision_secure",
+            "model": model,
+            "image_path": str(image_path),
+            "text": "",
+            "error": "Transcrição inicial vazia.",
+            "status": "ocr_degradado: OpenAI Vision nao extraiu texto util.",
+        }
+
+    audit = call_vision(audit_prompt(initial_text), image_data_url, model, api_key)
+    final_text = str(audit.get("texto_validado") or initial_text).strip()
+    confidence = str(audit.get("confianca") or "baixa").strip().lower()
+    if confidence not in {"alta", "media", "baixa"}:
+        confidence = "baixa"
+
+    divergences = as_list(audit.get("divergencias"))
+    critical_spans = as_list(audit.get("trechos_criticos"))
+    uncertain_words = as_list(initial.get("palavras_incertas"))
+    uncertain_spans = as_list(initial.get("trechos_incertos"))
+    similarity = similarity_ratio(initial_text, final_text)
+    line_count = int_or_default(
+        audit.get("linhas_estimadas"),
+        int_or_default(initial.get("linhas_estimadas"), final_text.count("\n") + 1),
+    )
+    paragraphs = int_or_default(
+        audit.get("paragrafos_estimados"),
+        int_or_default(initial.get("paragrafos_estimados"), paragraph_count(final_text)),
+    )
+    safe = bool(audit.get("pronto_para_correcao")) and is_safe_for_correction(
+        text=final_text,
+        confidence=confidence,
+        similarity=similarity,
+        divergences=divergences,
+        critical_spans=critical_spans,
+        paragraphs=paragraphs,
+    )
+    status = (
+        "ok: transcricao automatica validada por OCR Seguro OpenAI Vision; pronta para correcao automatica."
+        if safe
+        else "parcial: OCR Seguro OpenAI Vision exige revisao humana ou nova imagem antes de corrigir."
+    )
 
     return {
-        "ok": bool(literal_text),
-        "engine": "openai_vision",
+        "ok": bool(final_text),
+        "engine": "openai_vision_secure",
         "model": model,
         "image_path": str(image_path),
-        "text": literal_text,
-        "line_count": int(parsed.get("linhas_estimadas") or literal_text.count("\n") + 1),
-        "paragraph_count": int(
-            parsed.get("paragrafos_estimados")
-            or len([block for block in literal_text.split("\n\n") if block.strip()])
-        ),
-        "character_count": len(literal_text),
-        "uncertain_spans": [str(item) for item in uncertain],
+        "text": final_text,
+        "initial_text": initial_text,
+        "line_count": line_count,
+        "paragraph_count": paragraphs,
+        "character_count": len(final_text),
+        "confidence": confidence,
+        "similarity": similarity,
+        "safe_for_correction": safe,
+        "divergences": divergences,
+        "critical_spans": [str(item) for item in critical_spans],
+        "uncertain_spans": [str(item) for item in uncertain_spans],
         "uncertain_words": uncertain_words,
-        "notes": str(parsed.get("observacoes", "")).strip(),
-        "status": "parcial: transcricao automatica por OpenAI Vision; revisar literalmente antes de corrigir.",
+        "notes": str(audit.get("observacoes") or initial.get("observacoes") or "").strip(),
+        "initial_notes": str(initial.get("observacoes", "")).strip(),
+        "status": status,
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Transcreve imagem com OpenAI Vision.")
+    parser = argparse.ArgumentParser(description="Executa OCR Seguro com OpenAI Vision.")
     parser.add_argument("--image", required=True, type=Path)
     parser.add_argument("--model", default=os.environ.get("OPENAI_VISION_MODEL", "gpt-5.2"))
     args = parser.parse_args()
@@ -175,7 +330,7 @@ def main() -> int:
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY ausente.")
 
-        result = request_transcription(args.image, args.model, api_key)
+        result = request_secure_transcription(args.image, args.model, api_key)
         result["elapsed_time_s"] = round(time.monotonic() - started_at, 3)
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result["ok"] else 2
@@ -183,7 +338,7 @@ def main() -> int:
         body = exc.read().decode("utf-8", errors="replace")
         payload = {
             "ok": False,
-            "engine": "openai_vision",
+            "engine": "openai_vision_secure",
             "image_path": str(args.image),
             "text": "",
             "error": f"HTTPError {exc.code}: {body[:1000]}",
@@ -194,7 +349,7 @@ def main() -> int:
     except Exception as exc:
         payload = {
             "ok": False,
-            "engine": "openai_vision",
+            "engine": "openai_vision_secure",
             "image_path": str(args.image),
             "text": "",
             "error": f"{type(exc).__name__}: {exc}",

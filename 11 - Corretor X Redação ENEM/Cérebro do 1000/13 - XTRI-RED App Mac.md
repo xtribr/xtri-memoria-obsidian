@@ -39,7 +39,7 @@ Fluxo recomendado para 500 redações:
 3. Informar o tema oficial comum do lote.
 4. O XTRI-RED cria automaticamente `entradas/caso-*`.
 
-Arquivos `.txt` entram como transcrição pronta para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR local com PaddleOCR (`lang=pt`) quando o pacote está instalado no `.venv`; se PaddleOCR falhar ou não estiver disponível, o app cai para Apple Vision. Quando há texto extraído, o caso fica com `status-ocr.txt = parcial` porque a transcrição de manuscrito precisa de revisão. PDFs são copiados para o caso como `original.pdf`, mas continuam com `status-ocr.txt = aguardando_ocr` até existir texto em `redacao.txt`.
+Arquivos `.txt` entram como transcrição pronta para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR Seguro com OpenAI Vision quando `OPENAI_API_KEY` está disponível; se não houver chave ou a chamada falhar, o app usa PaddleOCR (`lang=pt`) quando instalado no `.venv`; se necessário, cai para Apple Vision. O OCR Seguro faz transcrição literal e auditoria visual independente. Só confiança alta, boa similaridade e ausência de trechos críticos geram `status-ocr.txt = ok`; os demais casos ficam `parcial`. PDFs são copiados para o caso como `original.pdf`, mas continuam com `status-ocr.txt = aguardando_ocr` até existir texto em `redacao.txt`.
 
 Casos de imagem podem ser processados ou reprocessados pelo botão `Rodar OCR`/`Reprocessar OCR`, exibido quando o caso tem `original.ext` compatível.
 
@@ -116,9 +116,9 @@ Observação: esta etapa cria um app clicável assinado ad-hoc para uso local. D
 
 ## Revisão de Transcrição
 
-Regra operacional atual: OCR de imagem manuscrita nunca libera correção automaticamente.
+Regra operacional atual: OCR de imagem manuscrita só libera correção automaticamente quando passa no OCR Seguro.
 
-O OpenAI Vision, PaddleOCR ou Apple Vision podem preencher `redacao.txt` como rascunho, mas enquanto `status-ocr.txt` estiver como `parcial`, `ocr_degradado`, `aguardando_ocr` ou `revisao_humana`, o app mantém `Corrigir` bloqueado.
+O OpenAI Vision pode preencher `redacao.txt` com transcrição validada. Se o status for `ok`, o lote pode seguir para correção. Se o status for `parcial`, `ocr_degradado`, `aguardando_ocr` ou `revisao_humana`, o app mantém `Corrigir` bloqueado.
 
 Fluxo correto:
 
@@ -129,7 +129,7 @@ Fluxo correto:
 
 Camadas de OCR:
 
-1. OpenAI Vision com `gpt-5.2`, se `OPENAI_API_KEY` estiver no Keychain ou no ambiente;
+1. OCR Seguro com OpenAI Vision `gpt-5.2`, se `OPENAI_API_KEY` estiver no Keychain ou no ambiente;
 2. PaddleOCR local, se instalado no `.venv`;
 3. Apple Vision local como fallback.
 
@@ -143,10 +143,13 @@ Prompt da camada OpenAI Vision:
 - preservação de hífens de quebra de linha quando escritos;
 - preservação de parágrafos com linha em branco entre blocos;
 - marcação de palavras/trechos ilegíveis ou duvidosos.
+- auditoria da transcrição inicial contra a imagem;
+- cálculo de `confidence`, `similarity` e `safe_for_correction`.
 
 Arquivos de auditoria:
 
 - `redacao-openai-vision.txt`
+- `redacao-openai-vision-inicial.txt`
 - `ocr-openai-vision.json`
 - `redacao-paddleocr.txt`
 - `ocr-paddle.json`
