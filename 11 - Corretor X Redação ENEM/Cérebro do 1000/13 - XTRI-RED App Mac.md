@@ -135,6 +135,15 @@ Camadas de OCR:
 
 O modelo da primeira camada pode ser sobrescrito por `OPENAI_VISION_MODEL`.
 
+Prompt da camada OpenAI Vision:
+
+- transcrição literal de português brasileiro;
+- preservação de acentos conforme visíveis no manuscrito;
+- preservação de erros reais do aluno;
+- preservação de hífens de quebra de linha quando escritos;
+- preservação de parágrafos com linha em branco entre blocos;
+- marcação de palavras/trechos ilegíveis ou duvidosos.
+
 Arquivos de auditoria:
 
 - `redacao-openai-vision.txt`

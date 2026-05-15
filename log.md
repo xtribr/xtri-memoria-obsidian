@@ -275,3 +275,15 @@ Decisão:
 - `scripts/ocr_openai_vision.py` passa a usar `gpt-5.2` como padrão.
 - `OPENAI_VISION_MODEL` continua disponível para teste controlado de outros modelos.
 - A saída permanece com status `parcial`, exigindo revisão humana antes de correção.
+
+## [2026-05-15] change | Prompt literal de OCR preserva parágrafos
+
+Atualizado o prompt da camada OpenAI Vision para transcrição literal de redações manuscritas.
+
+Regras adicionadas:
+
+- preservar acentos quando visíveis e não inserir acentos ausentes;
+- preservar hífens de quebra de linha;
+- preservar quebras de linha internas e separação de parágrafos;
+- marcar palavras incertas com motivo de incerteza;
+- reforçar que a transcrição não pode corrigir, normalizar ou completar o texto do aluno.

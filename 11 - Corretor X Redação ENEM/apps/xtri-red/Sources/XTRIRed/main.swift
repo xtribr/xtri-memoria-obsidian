@@ -108,7 +108,9 @@ struct OpenAIVisionOCRPayload: Decodable {
     let text: String
     let characterCount: Int
     let lineCount: Int
+    let paragraphCount: Int?
     let uncertainSpans: [String]?
+    let uncertainWords: [UncertainWord]?
     let notes: String?
     let status: String?
     let error: String?
@@ -120,11 +122,18 @@ struct OpenAIVisionOCRPayload: Decodable {
         case text
         case characterCount = "character_count"
         case lineCount = "line_count"
+        case paragraphCount = "paragraph_count"
         case uncertainSpans = "uncertain_spans"
+        case uncertainWords = "uncertain_words"
         case notes
         case status
         case error
     }
+}
+
+struct UncertainWord: Decodable {
+    let trecho: String?
+    let motivo: String?
 }
 
 enum KeychainError: LocalizedError {
@@ -892,16 +901,22 @@ enum CaseImporter {
     }
 
     private static func openAIVisionOCRMetadata(_ payload: OpenAIVisionOCRPayload) throws -> String {
-        let data = try JSONEncoder().encode([
+        let uncertainWords = (payload.uncertainWords ?? [])
+            .map { "\($0.trecho ?? ""):\($0.motivo ?? "")" }
+            .joined(separator: " | ")
+        let metadata: [String: String] = [
             "engine": payload.engine ?? "openai_vision",
             "model": payload.model ?? "",
             "character_count": "\(payload.characterCount)",
             "line_count": "\(payload.lineCount)",
+            "paragraph_count": payload.paragraphCount.map { "\($0)" } ?? "",
             "uncertain_spans": (payload.uncertainSpans ?? []).joined(separator: " | "),
+            "uncertain_words": uncertainWords,
             "notes": payload.notes ?? "",
             "status": payload.status ?? "",
             "error": payload.error ?? "",
-        ])
+        ]
+        let data = try JSONEncoder().encode(metadata)
         return String(data: data, encoding: .utf8) ?? "{}"
     }
 

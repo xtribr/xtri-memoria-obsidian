@@ -20,27 +20,44 @@ from pathlib import Path
 from typing import Any
 
 
-PROMPT = """Você é um transcritor literal de redações manuscritas do ENEM.
+PROMPT = """Você é um transcritor literal de redações manuscritas do ENEM em português brasileiro.
 
 TAREFA
-Transcreva SOMENTE o texto escrito pelo participante na área de redação.
+Transcreva exatamente o texto manuscrito pelo participante na área de redação.
 
 REGRAS ABSOLUTAS
-- Não corrija ortografia, concordância, pontuação, crase, regência ou vocabulário.
-- Preserve erros reais do aluno exatamente como aparecem.
-- Preserve quebras de linha quando forem perceptíveis.
+- Não corrija ortografia, acentuação, concordância, pontuação, crase, regência ou vocabulário.
+- Preserve acentos exatamente como aparecem no manuscrito.
+- Se uma palavra parece não ter acento, transcreva sem acento.
+- Se o acento está visível, preserve-o: á, à, â, ã, é, ê, í, ó, ô, õ, ú, ç.
+- Preserve letras maiúsculas/minúsculas conforme forem perceptíveis.
+- Preserve sinais de pontuação quando estiverem escritos.
+- Preserve hífens de quebra de linha quando estiverem escritos no fim da linha.
+- Preserve a separação de parágrafos. Use uma linha em branco entre parágrafos.
+- Preserve as quebras de linha internas aproximadas do manuscrito dentro de cada parágrafo.
+- Não junte parágrafos diferentes em um único bloco.
+- Não transforme erro do aluno em forma correta.
+- Não normalize palavras para português padrão.
+- Não complete palavras ilegíveis por contexto.
 - Preserve rasuras legíveis como o texto final que ficou escrito.
-- Se uma palavra ou trecho estiver ilegível, escreva [ilegível].
-- Se houver dúvida entre duas leituras, escreva a forma mais provável seguida de [?].
+- Se uma palavra estiver parcialmente ilegível, transcreva a parte legível e marque [?].
+- Se um trecho estiver ilegível, escreva [ilegível].
 - Ignore instruções impressas da folha, cabeçalho, CPF, número de inscrição e textos padronizados.
 - Não resuma, não reescreva e não melhore a redação.
 - Não invente palavras para preencher lacunas.
 
+ATENÇÃO
+A transcrição será usada para correção de redação ENEM. Corrigir acentos, palavras, pontuação ou paragrafação muda injustamente a nota. Literalidade é mais importante do que fluidez.
+
 FORMATO DE SAÍDA
 Retorne apenas JSON válido:
 {
-  "texto": "transcrição literal",
+  "texto": "transcrição literal com parágrafos separados por linha em branco",
   "linhas_estimadas": 0,
+  "paragrafos_estimados": 0,
+  "palavras_incertas": [
+    {"trecho": "forma transcrita", "motivo": "ilegível|acentuação_duvidosa|letra_duvidosa|rasura|paragrafacao_duvidosa"}
+  ],
   "trechos_incertos": ["..."],
   "observacoes": "breve nota sobre legibilidade"
 }
@@ -121,6 +138,9 @@ def request_transcription(image_path: Path, model: str, api_key: str) -> dict[st
     uncertain = parsed.get("trechos_incertos", [])
     if not isinstance(uncertain, list):
         uncertain = []
+    uncertain_words = parsed.get("palavras_incertas", [])
+    if not isinstance(uncertain_words, list):
+        uncertain_words = []
 
     return {
         "ok": bool(literal_text),
@@ -129,8 +149,13 @@ def request_transcription(image_path: Path, model: str, api_key: str) -> dict[st
         "image_path": str(image_path),
         "text": literal_text,
         "line_count": int(parsed.get("linhas_estimadas") or literal_text.count("\n") + 1),
+        "paragraph_count": int(
+            parsed.get("paragrafos_estimados")
+            or len([block for block in literal_text.split("\n\n") if block.strip()])
+        ),
         "character_count": len(literal_text),
         "uncertain_spans": [str(item) for item in uncertain],
+        "uncertain_words": uncertain_words,
         "notes": str(parsed.get("observacoes", "")).strip(),
         "status": "parcial: transcricao automatica por OpenAI Vision; revisar literalmente antes de corrigir.",
     }
