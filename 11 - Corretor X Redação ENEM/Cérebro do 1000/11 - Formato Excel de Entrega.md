@@ -89,13 +89,27 @@ Colunas:
 
 ## Calibração
 
-Resumo automático por competência. A estrutura antiga do template ainda será substituída na próxima revisão de abas auxiliares, pois a `Devolutiva` agora é consolidada por redação.
+Aba granular para auditoria pedagógica e treinamento de futuros corretores, com múltiplas linhas por redação. Cada linha registra um apontamento extraído dos JSONs das competências.
 
-- casos validados;
-- diferença média;
-- erro absoluto médio;
-- contagem de generosidade;
-- contagem de rigor excessivo.
+Colunas:
+
+- `id_redacao`;
+- `competencia`;
+- `tipo_apontamento`;
+- `subtipo`;
+- `trecho_evidencia`;
+- `gravidade`;
+- `classificacao`;
+- `justificativa`.
+
+Tipos de apontamento:
+
+- `desvio`: desvios de C1, com subtipo gramatical e gravidade;
+- `repertorio`: repertórios de C2, com classificação `produtivo`, `bolso` ou `nao_legitimado`;
+- `inadequacao_coesiva`: problemas de C4, como `conector_sem_relacao`, `empilhamento`, `repeticao_inadequada` ou `paragrafo_isolado`;
+- `elemento_proposta`: elementos de C5, com subtipo `agente`, `acao`, `meio`, `efeito` ou `detalhamento`.
+
+Para C5, o script registra os cinco elementos esperados. Quando um elemento não for identificado, `trecho_evidencia` fica vazio e `justificativa` recebe `elemento_ausente`.
 
 ## Listas
 

@@ -118,7 +118,7 @@ Se a chamada 0 retornar `anulado = false`, o script faz uma chamada separada par
 - C4;
 - C5.
 
-Mesmo com C2 sendo chamada primeiro, as abas `Devolutiva` e `Resumo` são preenchidas como uma linha consolidada por redação, com colunas de nota, comentário e sugestão na ordem C1, C2, C3, C4 e C5.
+Mesmo com C2 sendo chamada primeiro, as abas `Devolutiva` e `Resumo` são preenchidas como uma linha consolidada por redação, com colunas de nota, comentário e sugestão na ordem C1, C2, C3, C4 e C5. A aba `Calibração` é preenchida com linhas granulares de desvios, repertórios, inadequações coesivas e elementos de proposta.
 
 Se C2 indicar `tangenciamento_c2 = true`, C3 e C5 recebem essa flag no prompt. O script também aplica uma verificação dupla: se C3 ou C5 retornarem nota acima de 40 com tangenciamento ativo, a nota é limitada a 40 antes de preencher o Excel.
 
@@ -146,7 +146,7 @@ Depois, o script preenche o [Template - Entrega Excel Corretor X.xlsx](templates
 
 ## Próximo controle
 
-Depois da correção, preencher `nota_oficial_ou_validada` quando houver revisão humana. A aba `Calibração` calculará a diferença por competência.
+Depois da correção, preencher `nota_oficial_ou_validada` quando houver revisão humana. A aba `Calibração` servirá como base de auditoria pedagógica para medir padrões de desvio, repertórios recorrentes, problemas de coesão e elementos ausentes na proposta.
 
 ## Conexões
 

@@ -97,6 +97,16 @@ RESUMO_HEADERS = [
     "custo_tokens_total",
     "tempo_processamento_s",
 ]
+CALIBRACAO_HEADERS = [
+    "id_redacao",
+    "competencia",
+    "tipo_apontamento",
+    "subtipo",
+    "trecho_evidencia",
+    "gravidade",
+    "classificacao",
+    "justificativa",
+]
 
 
 RUBRICAS = {
@@ -897,6 +907,15 @@ def count_repertorios_bolso(raw_c2: dict[str, Any]) -> int:
     )
 
 
+def text_or_blank(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if strip_accents(text).lower() in {"", "null", "none", "n/a"}:
+        return ""
+    return text
+
+
 def build_alertas(status_tema: str, status_ocr: str, resultado: ResultadoCorrecao) -> str:
     alertas: list[str] = []
     status_tema_normalizado = strip_accents(status_tema).strip().lower()
@@ -1034,6 +1053,39 @@ def style_resumo(ws: Any) -> None:
     ws.auto_filter.ref = f"A1:{get_column_letter(len(RESUMO_HEADERS))}{max(ws.max_row, 1)}"
 
 
+def style_calibracao(ws: Any) -> None:
+    header_fill = PatternFill("solid", fgColor="34C759")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    widths = {
+        "A": 18,
+        "B": 14,
+        "C": 24,
+        "D": 24,
+        "E": 54,
+        "F": 14,
+        "G": 18,
+        "H": 54,
+    }
+    for column, width in widths.items():
+        ws.column_dimensions[column].width = width
+
+    ws.row_dimensions[1].height = 36
+    for row_idx in range(2, ws.max_row + 1):
+        ws.row_dimensions[row_idx].height = 54
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(CALIBRACAO_HEADERS))}{max(ws.max_row, 1)}"
+
+
 def build_resumo_row(
     case_id: str,
     data_correcao: datetime,
@@ -1079,6 +1131,105 @@ def build_resumo_row(
         resultado.custo_tokens_total,
         resultado.tempo_processamento_s,
     ]
+
+
+def append_calibracao_c1(rows: list[list[str]], case_id: str, raw_c1: dict[str, Any]) -> None:
+    desvios = raw_c1.get("desvios_encontrados")
+    if not isinstance(desvios, list):
+        return
+
+    for desvio in desvios:
+        if not isinstance(desvio, dict):
+            continue
+        rows.append(
+            [
+                case_id,
+                "C1",
+                "desvio",
+                text_or_blank(desvio.get("tipo")),
+                text_or_blank(desvio.get("trecho")),
+                text_or_blank(desvio.get("gravidade")),
+                "",
+                "",
+            ]
+        )
+
+
+def append_calibracao_c2(rows: list[list[str]], case_id: str, raw_c2: dict[str, Any]) -> None:
+    repertorios = raw_c2.get("repertorios_identificados")
+    if not isinstance(repertorios, list):
+        return
+
+    for repertorio in repertorios:
+        if not isinstance(repertorio, dict):
+            continue
+        classificacao = text_or_blank(repertorio.get("classificacao"))
+        classificacao_normalizada = strip_accents(classificacao).strip().lower()
+        subtipo = f"repertorio_{classificacao_normalizada}" if classificacao_normalizada else "repertorio"
+        rows.append(
+            [
+                case_id,
+                "C2",
+                "repertorio",
+                subtipo,
+                text_or_blank(repertorio.get("referencia")),
+                "",
+                classificacao,
+                text_or_blank(repertorio.get("justificativa")),
+            ]
+        )
+
+
+def append_calibracao_c4(rows: list[list[str]], case_id: str, raw_c4: dict[str, Any]) -> None:
+    inadequacoes = raw_c4.get("inadequacoes_identificadas")
+    if not isinstance(inadequacoes, list):
+        return
+
+    for inadequacao in inadequacoes:
+        if not isinstance(inadequacao, dict):
+            continue
+        rows.append(
+            [
+                case_id,
+                "C4",
+                "inadequacao_coesiva",
+                text_or_blank(inadequacao.get("tipo")),
+                text_or_blank(inadequacao.get("trecho")),
+                "",
+                "",
+                "",
+            ]
+        )
+
+
+def append_calibracao_c5(rows: list[list[str]], case_id: str, raw_c5: dict[str, Any]) -> None:
+    elementos = raw_c5.get("elementos_identificados")
+    if not isinstance(elementos, dict):
+        return
+
+    for subtipo in ("agente", "acao", "meio", "efeito", "detalhamento"):
+        trecho = text_or_blank(elementos.get(subtipo))
+        rows.append(
+            [
+                case_id,
+                "C5",
+                "elemento_proposta",
+                subtipo,
+                trecho,
+                "",
+                "",
+                "elemento_identificado" if trecho else "elemento_ausente",
+            ]
+        )
+
+
+def build_calibracao_rows(case_id: str, resultado: ResultadoCorrecao) -> list[list[str]]:
+    rows: list[list[str]] = []
+    append_calibracao_c1(rows, case_id, raw_competencia(resultado, "C1"))
+    append_calibracao_c2(rows, case_id, raw_competencia(resultado, "C2"))
+    append_calibracao_c4(rows, case_id, raw_competencia(resultado, "C4"))
+    append_calibracao_c5(rows, case_id, raw_competencia(resultado, "C5"))
+    return rows
 
 
 def fill_workbook(
@@ -1147,6 +1298,13 @@ def fill_workbook(
     ws_resumo["B2"].number_format = "yyyy-mm-dd hh:mm:ss"
     ws_resumo["Y2"].number_format = "0.000"
     style_resumo(ws_resumo)
+
+    ws_calibracao = wb["Calibração"] if "Calibração" in wb.sheetnames else wb.create_sheet("Calibração")
+    reset_worksheet(ws_calibracao)
+    ws_calibracao.append(CALIBRACAO_HEADERS)
+    for calibracao_row in build_calibracao_rows(case_id, resultado):
+        ws_calibracao.append(calibracao_row)
+    style_calibracao(ws_calibracao)
 
     wb.save(output_path)
 
