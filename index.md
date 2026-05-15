@@ -73,6 +73,11 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 - [[Resumo - GPT-3.5 e GPT-4 no ENEM]]
 - [[Resumo - Sabiá-3]]
 
+## Corretor X e XTRI-RED
+
+- [[13 - XTRI-RED App Mac]] - app macOS local que opera o Corretor X usando o vault Obsidian como cérebro metodológico.
+- [[12 - Integração Sabiá]] - integração operacional com Sabiá, validação Pydantic, política de recuperação e entrega Excel.
+
 ## Processos
 
 - [[Regras Operacionais do Codex na XTRI]] - regras absolutas de trabalho.

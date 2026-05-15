@@ -14,6 +14,26 @@ Operar correções em lote no macOS usando o vault do Obsidian como cérebro met
 - Executar dry-run e correção real via `scripts/run_caso_sabia.sh`.
 - Abrir o Excel gerado em `Cérebro do 1000/casos/exports`.
 
+## Atualização de Validação Sabiá
+
+Status em 2026-05-15: o XTRI-RED usa o runner `scripts/run_caso_sabia.sh`, que chama `scripts/corrigir_com_sabia.py`. Portanto, a política de recuperação do Sabiá já entra no app sem lógica duplicada em Swift.
+
+Fluxo aplicado pelo motor:
+
+- `re_prompt_com_erro`: envia o erro Pydantic e o JSON rejeitado para o Sabiá corrigir a estrutura.
+- `fallback_modelo_maior`: tenta novamente com o modelo configurado em `SABIA_FALLBACK_MODEL` ou `--fallback-model`.
+- `marcar_revisao_humana`: bloqueia a geração do Excel e cria `*.revisao-humana.txt` quando a resposta continua inválida.
+
+O bundle local foi recompilado em 2026-05-15:
+
+- `apps/xtri-red/dist/XTRI-RED.app`
+
+Validação feita:
+
+- build release Swift;
+- assinatura ad-hoc;
+- `codesign --verify --deep --strict` com caminho absoluto.
+
 ## Papel do Obsidian
 
 O Obsidian continua sendo a fonte de governança:

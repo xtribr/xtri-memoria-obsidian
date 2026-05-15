@@ -155,3 +155,19 @@ Observações:
 
 - O HTML registra sínteses, padrões e protocolo; não republica transcrições integrais das redações nota 1000.
 - A cartilha oficial do Inep permanece como autoridade normativa; as cartilhas nota 1000 são referência de padrões, não regra oficial.
+
+## [2026-05-15] change | XTRI-RED com recuperação de validação Sabiá
+
+Registrada a atualização operacional do XTRI-RED/Corretor X para respostas do Sabiá que falham nos schemas Pydantic.
+
+Notas principais:
+
+- [[12 - Integração Sabiá]]
+- [[13 - XTRI-RED App Mac]]
+
+Mudanças registradas:
+
+- O script `scripts/corrigir_com_sabia.py` aplica `re_prompt_com_erro`, `fallback_modelo_maior` e, se necessário, `marcar_revisao_humana`.
+- Tentativas inválidas entram na aba `Auditoria` quando uma tentativa posterior recupera a chamada.
+- Se a validação não for recuperada, o Excel não é gerado e o caso recebe um arquivo `*.revisao-humana.txt`.
+- O bundle local `apps/xtri-red/dist/XTRI-RED.app` foi recompilado e verificado com assinatura ad-hoc em 2026-05-15.
