@@ -45,7 +45,8 @@ cd "${VAULT_DIR}"
 
 INPUT_DIR="entradas/${CASE_DIR}"
 TEMA_FILE="${INPUT_DIR}/tema.txt"
-REDACAO_FILE="${INPUT_DIR}/redacao.txt"
+REDACAO_LITERAL_FILE="${INPUT_DIR}/redacao-literal.txt"
+REDACAO_DRAFT_FILE="${INPUT_DIR}/redacao.txt"
 STATUS_OCR_FILE="${INPUT_DIR}/status-ocr.txt"
 STATUS_TEMA_FILE="${INPUT_DIR}/status-tema.txt"
 STATUS_ANULACAO_FILE="${INPUT_DIR}/status-anulacao.txt"
@@ -53,7 +54,7 @@ TANGENCIAMENTO_C2_FILE="${INPUT_DIR}/tangenciamento-c2.txt"
 NUM_LINHAS_FILE="${INPUT_DIR}/num-linhas.txt"
 OUT_XLSX="Cérebro do 1000/casos/exports/${CASE_ID}.xlsx"
 
-for required_file in "${TEMA_FILE}" "${REDACAO_FILE}" "${STATUS_OCR_FILE}"; do
+for required_file in "${TEMA_FILE}" "${STATUS_OCR_FILE}"; do
   if [[ ! -f "${required_file}" ]]; then
     echo "Erro: arquivo obrigatório não encontrado: ${required_file}" >&2
     exit 4
@@ -61,6 +62,23 @@ for required_file in "${TEMA_FILE}" "${REDACAO_FILE}" "${STATUS_OCR_FILE}"; do
 done
 
 STATUS_OCR="$(cat "${STATUS_OCR_FILE}")"
+STATUS_OCR_NORMALIZED="$(printf '%s' "${STATUS_OCR}" | tr '[:upper:]' '[:lower:]')"
+
+if [[ -s "${REDACAO_LITERAL_FILE}" ]]; then
+  REDACAO_FILE="${REDACAO_LITERAL_FILE}"
+elif [[ -s "${REDACAO_DRAFT_FILE}" ]]; then
+  REDACAO_FILE="${REDACAO_DRAFT_FILE}"
+else
+  echo "Erro: transcrição literal não encontrada em ${REDACAO_LITERAL_FILE} nem rascunho em ${REDACAO_DRAFT_FILE}" >&2
+  exit 4
+fi
+
+if [[ "${STATUS_OCR_NORMALIZED}" != ok:* && "${CORRETOR_X_ALLOW_UNSAFE_OCR:-}" != "1" ]]; then
+  echo "Erro: correção bloqueada. Status da transcrição não é ok:" >&2
+  echo "${STATUS_OCR}" >&2
+  echo "Revise/salve a transcrição literal no XTRI-RED ou use CORRETOR_X_ALLOW_UNSAFE_OCR=1 para auditoria manual." >&2
+  exit 5
+fi
 
 set -- \
   --tema-file "${TEMA_FILE}" \

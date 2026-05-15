@@ -218,6 +218,13 @@ REGRAS OBRIGATÓRIAS
 - Para 200 pontos, o texto precisa atender a TODOS os critérios da faixa, não apenas alguns.
 - Em caso de dúvida entre duas faixas, escolha a INFERIOR e justifique.
 
+REGRA DE TRANSCRIÇÃO FORENSE
+- A redação abaixo deve ser tratada como transcrição literal do manuscrito.
+- Não normalize, corrija ou "melhore" grafia, acentos, pontuação, concordância, paragrafação ou escolhas vocabulares do aluno.
+- Preserve a interpretação de erros aparentes como possíveis erros reais do aluno, salvo quando o status OCR indicar baixa confiança ou trecho incerto.
+- Se o status OCR/transcrição não indicar validação segura, reduza "nivel_confianca" e explicite a limitação no comentário.
+- Para C1, use desvios presentes na transcrição literal como evidências, sem supor correção automática.
+
 CONTEXTO DA AVALIAÇÃO
 - Tema oficial: {tema}
 - Status do tema: {status_tema}  # verificado | inferido | ausente

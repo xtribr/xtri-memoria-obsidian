@@ -56,8 +56,11 @@ entradas/caso-001/
   tema.txt
   status-tema.txt
   status-ocr.txt
+  redacao-literal.txt
   redacao.txt
   original.ext
+  transcricao-fonte.txt
+  transcricao-literal-validada.txt
   metadados-importacao.txt
 ```
 
@@ -119,6 +122,13 @@ Observação: esta etapa cria um app clicável assinado ad-hoc para uso local. D
 Regra operacional atual: OCR de imagem manuscrita só libera correção automaticamente quando passa no OCR Seguro.
 
 O OpenAI Vision pode preencher `redacao.txt` com transcrição validada. Se o status for `ok`, o lote pode seguir para correção. Se o status for `parcial`, `ocr_degradado`, `aguardando_ocr` ou `revisao_humana`, o app mantém `Corrigir` bloqueado.
+
+Regra de fonte da correção:
+
+- `redacao-literal.txt` é a transcrição forense usada para correção.
+- `redacao.txt` é rascunho/compatibilidade e pode conter OCR parcial.
+- `scripts/run_caso_sabia.sh` prefere `redacao-literal.txt` e bloqueia status diferente de `ok:`.
+- Override só para auditoria manual: `CORRETOR_X_ALLOW_UNSAFE_OCR=1`.
 
 Fluxo correto:
 

@@ -539,8 +539,23 @@ final class AppModel: ObservableObject {
                 atomically: true,
                 encoding: .utf8
             )
+            try text.write(
+                to: selectedCase.entryURL.appendingPathComponent("redacao-literal.txt"),
+                atomically: true,
+                encoding: .utf8
+            )
             try "ok: transcricao revisada manualmente no XTRI-RED; pronta para correcao.".write(
                 to: selectedCase.entryURL.appendingPathComponent("status-ocr.txt"),
+                atomically: true,
+                encoding: .utf8
+            )
+            try "manual_xtri_red".write(
+                to: selectedCase.entryURL.appendingPathComponent("transcricao-fonte.txt"),
+                atomically: true,
+                encoding: .utf8
+            )
+            try "true".write(
+                to: selectedCase.entryURL.appendingPathComponent("transcricao-literal-validada.txt"),
                 atomically: true,
                 encoding: .utf8
             )
@@ -568,7 +583,7 @@ final class AppModel: ObservableObject {
             transcriptionDraft = ""
             return
         }
-        transcriptionDraft = readText(selectedCase.entryURL.appendingPathComponent("redacao.txt"))
+        transcriptionDraft = readBestTranscription(in: selectedCase.entryURL)
     }
 
     func openExport() {
@@ -713,9 +728,13 @@ enum CaseImporter {
                 try write(essayText, to: caseURL.appendingPathComponent("redacao.txt"))
                 if essayText.isEmpty {
                     try write("revisao_humana: arquivo .txt importado sem transcricao util.", to: caseURL.appendingPathComponent("status-ocr.txt"))
+                    try write("false", to: caseURL.appendingPathComponent("transcricao-literal-validada.txt"))
                     pendingOCR += 1
                 } else {
+                    try write(essayText, to: caseURL.appendingPathComponent("redacao-literal.txt"))
                     try write("ok: transcricao importada de arquivo .txt; sem OCR automatico.", to: caseURL.appendingPathComponent("status-ocr.txt"))
+                    try write("txt_import", to: caseURL.appendingPathComponent("transcricao-fonte.txt"))
+                    try write("true", to: caseURL.appendingPathComponent("transcricao-literal-validada.txt"))
                     readyForCorrection += 1
                 }
             } else if isImageFile {
@@ -728,6 +747,7 @@ enum CaseImporter {
             } else {
                 try write("", to: caseURL.appendingPathComponent("redacao.txt"))
                 try write("aguardando_ocr: PDF importado; OCR automatico de PDF ainda nao disponivel.", to: caseURL.appendingPathComponent("status-ocr.txt"))
+                try write("false", to: caseURL.appendingPathComponent("transcricao-literal-validada.txt"))
                 pendingOCR += 1
             }
 
@@ -818,6 +838,11 @@ enum CaseImporter {
             if let initialText = openAIResult.initialText, !initialText.isEmpty {
                 try write(initialText, to: caseURL.appendingPathComponent("redacao-openai-vision-inicial.txt"))
             }
+            try write("openai_vision_secure", to: caseURL.appendingPathComponent("transcricao-fonte.txt"))
+            try write(openAIResult.safeForCorrection == true ? "true" : "false", to: caseURL.appendingPathComponent("transcricao-literal-validada.txt"))
+            if openAIResult.safeForCorrection == true {
+                try write(openAIResult.text, to: caseURL.appendingPathComponent("redacao-literal.txt"))
+            }
             try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
             try write(openAIVisionOCRMetadata(openAIResult), to: caseURL.appendingPathComponent("ocr-openai-vision.json"))
             return OCRResult(
@@ -836,6 +861,8 @@ enum CaseImporter {
             let status = paddleResult.status ?? "parcial: OCR automatico por PaddleOCR; revisar transcricao antes de corrigir."
             try write(paddleResult.text, to: caseURL.appendingPathComponent("redacao.txt"))
             try write(paddleResult.text, to: caseURL.appendingPathComponent("redacao-paddleocr.txt"))
+            try write("paddleocr_draft", to: caseURL.appendingPathComponent("transcricao-fonte.txt"))
+            try write("false", to: caseURL.appendingPathComponent("transcricao-literal-validada.txt"))
             try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
             try write(paddleOCRMetadata(paddleResult), to: caseURL.appendingPathComponent("ocr-paddle.json"))
             return OCRResult(
@@ -864,6 +891,8 @@ enum CaseImporter {
 
         try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
         try write(text, to: caseURL.appendingPathComponent("redacao-apple-vision.txt"))
+        try write("apple_vision_draft", to: caseURL.appendingPathComponent("transcricao-fonte.txt"))
+        try write("false", to: caseURL.appendingPathComponent("transcricao-literal-validada.txt"))
 
         return OCRResult(
             caseID: caseID,
@@ -1040,7 +1069,7 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
             : importedStudentName
         let theme = readText(url.appendingPathComponent("tema.txt"))
         let statusOCR = readText(url.appendingPathComponent("status-ocr.txt"))
-        let essayText = readText(url.appendingPathComponent("redacao.txt"))
+        let essayText = readBestTranscription(in: url)
         let exportURL = exportsURL.appendingPathComponent("\(caseID).xlsx")
         let canRunOCR = originalImageURL(in: url) != nil
         let hasTranscription = !essayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1069,17 +1098,32 @@ private func readText(_ url: URL) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 }
 
+private func readBestTranscription(in caseURL: URL) -> String {
+    let statusOCR = readText(caseURL.appendingPathComponent("status-ocr.txt"))
+    let literal = readText(caseURL.appendingPathComponent("redacao-literal.txt"))
+    if isOKStatus(statusOCR), !literal.isEmpty {
+        return literal
+    }
+    return readText(caseURL.appendingPathComponent("redacao.txt"))
+}
+
+private func isOKStatus(_ statusOCR: String) -> Bool {
+    statusOCR
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+        .hasPrefix("ok:")
+}
+
 private func isCorrectionReady(essayText: String, statusOCR: String) -> Bool {
     guard !essayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+
+    if isOKStatus(statusOCR) {
+        return true
+    }
 
     let status = statusOCR
         .trimmingCharacters(in: .whitespacesAndNewlines)
         .lowercased()
-
-    if status.hasPrefix("ok:") {
-        return true
-    }
-
     let blockedStatusPrefixes = [
         "aguardando_ocr",
         "ocr_degradado",

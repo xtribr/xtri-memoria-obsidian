@@ -300,3 +300,16 @@ Comportamento:
 - a saída registra `confidence`, `similarity`, `safe_for_correction`, divergências e trechos críticos;
 - apenas casos com confiança alta, similaridade mínima, parágrafos suficientes e sem trechos críticos recebem `status ok`;
 - casos inseguros ficam `parcial` e seguem para fila de revisão ou reenvio de imagem.
+
+## [2026-05-15] fix | Transcrição literal como fonte única da correção
+
+Fechada a separação entre rascunho de OCR e texto corrigível.
+
+Comportamento:
+
+- `redacao-literal.txt` passa a ser a fonte preferencial para correção.
+- `redacao.txt` permanece como rascunho/compatibilidade.
+- transcrições manuais e imports `.txt` gravam `redacao-literal.txt`.
+- OCR Seguro só grava `redacao-literal.txt` quando `safe_for_correction=true`.
+- `scripts/run_caso_sabia.sh` bloqueia status OCR diferente de `ok:` por padrão.
+- o prompt do Sabiá recebeu regra de transcrição forense para não normalizar erros do aluno.

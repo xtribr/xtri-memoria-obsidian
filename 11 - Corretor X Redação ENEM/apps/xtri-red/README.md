@@ -48,6 +48,8 @@ Casos de imagem podem ser processados ou reprocessados pelo botão `Rodar OCR`/`
 
 Para revisar imagem manuscrita, use `Abrir imagem`, corrija a transcrição no editor e clique em `Salvar transcrição`. O status muda para `ok` e o caso fica liberado para dry-run/correção.
 
+Regra de segurança: a correção usa `redacao-literal.txt` quando o arquivo existe. `redacao.txt` é mantido como rascunho/compatibilidade. O runner `scripts/run_caso_sabia.sh` bloqueia qualquer caso cujo `status-ocr.txt` não comece com `ok:`, salvo override explícito para auditoria manual.
+
 Para instalar o OCR opcional com PaddleOCR:
 
 ```bash
@@ -73,8 +75,11 @@ entradas/caso-001/
   tema.txt
   status-tema.txt
   status-ocr.txt
+  redacao-literal.txt
   redacao.txt
   original.ext
+  transcricao-fonte.txt
+  transcricao-literal-validada.txt
   metadados-importacao.txt
 ```
 
