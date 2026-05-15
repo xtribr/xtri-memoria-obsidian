@@ -119,6 +119,34 @@ Exemplos de linhas:
 - `red_001 | C4 | inadequacao_coesiva | conector_sem_relacao | "portanto, vale ressaltar" | | | "portanto" sem relação conclusiva`;
 - `red_001 | C5 | elemento_proposta | agente | "Ministério da Educação" | | | agente identificado`.
 
+## Auditoria
+
+Aba técnica com uma linha por chamada ao Sabiá, usada para rastreabilidade, reprocessamento e depuração das respostas do modelo.
+
+Colunas:
+
+- `id_chamada`;
+- `id_redacao`;
+- `timestamp`;
+- `etapa`;
+- `modelo`;
+- `prompt_versao`;
+- `prompt_hash`;
+- `json_resposta_bruto`;
+- `validacao_pydantic_ok`;
+- `erros_pydantic`;
+- `tempo_resposta_s`;
+- `tokens_input`;
+- `tokens_output`;
+- `custo_estimado_usd`.
+
+Regras:
+
+- `etapa` usa `gate`, `c1`, `c2`, `c3`, `c4` ou `c5`;
+- `prompt_hash` é o SHA-256 dos primeiros 500 caracteres do prompt enviado;
+- `json_resposta_bruto` guarda o JSON completo extraído da resposta do Sabiá;
+- `tokens_input`, `tokens_output` e `custo_estimado_usd` só são preenchidos se a API devolver esses metadados na resposta.
+
 ## Listas
 
 Aba auxiliar com valores permitidos para competência, nota, confiança, OCR e validação.

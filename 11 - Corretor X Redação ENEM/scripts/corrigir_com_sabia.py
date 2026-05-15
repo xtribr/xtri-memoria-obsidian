@@ -14,6 +14,7 @@ Uso mínimo:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -23,6 +24,7 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +37,7 @@ from openpyxl.utils import get_column_letter
 
 API_URL = "https://chat.maritaca.ai/api/chat/completions"
 DEFAULT_MODEL = "sabia-4"
+DEFAULT_PROMPT_VERSION = "v1.0"
 VALID_SCORES = {0, 40, 80, 120, 160, 200}
 COMPETENCIAS = ["C1", "C2", "C3", "C4", "C5"]
 ORDEM_CORRECAO = ["C2", "C1", "C3", "C4", "C5"]
@@ -106,6 +109,22 @@ CALIBRACAO_HEADERS = [
     "gravidade",
     "classificacao",
     "justificativa",
+]
+AUDITORIA_HEADERS = [
+    "id_chamada",
+    "id_redacao",
+    "timestamp",
+    "etapa",
+    "modelo",
+    "prompt_versao",
+    "prompt_hash",
+    "json_resposta_bruto",
+    "validacao_pydantic_ok",
+    "erros_pydantic",
+    "tempo_resposta_s",
+    "tokens_input",
+    "tokens_output",
+    "custo_estimado_usd",
 ]
 REPERTORIO_SUBTIPO_ALIASES = {
     "pequeno manual antirracista": "djamila_ribeiro",
@@ -344,6 +363,33 @@ class GateAnulacao:
 
 
 @dataclass
+class SabiaResponse:
+    content: str
+    response_body: dict[str, Any]
+    tempo_resposta_s: float
+    tokens_input: int | None = None
+    tokens_output: int | None = None
+    custo_estimado_usd: float | None = None
+
+
+@dataclass
+class ChamadaAuditoria:
+    id_chamada: str
+    timestamp: datetime
+    etapa: str
+    modelo: str
+    prompt_versao: str
+    prompt_hash: str
+    json_resposta_bruto: str
+    validacao_pydantic_ok: bool
+    erros_pydantic: str
+    tempo_resposta_s: float
+    tokens_input: int | None = None
+    tokens_output: int | None = None
+    custo_estimado_usd: float | None = None
+
+
+@dataclass
 class ResultadoCorrecao:
     anulado: bool
     motivos_anulacao: list[str]
@@ -351,6 +397,7 @@ class ResultadoCorrecao:
     nota_final: int
     avaliacoes: list[AvaliacaoCompetencia]
     raw_respostas: dict[str, dict[str, Any]]
+    chamadas_auditoria: list[ChamadaAuditoria]
     custo_tokens_total: int | None = None
     tempo_processamento_s: float | None = None
 
@@ -380,6 +427,52 @@ def extract_json(content: str) -> dict[str, Any]:
         if start >= 0 and end > start:
             content = content[start : end + 1]
     return json.loads(content)
+
+
+def prompt_hash(prompt: str) -> str:
+    return hashlib.sha256(prompt[:500].encode("utf-8")).hexdigest()
+
+
+def int_or_none(value: Any) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def float_or_none(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def usage_value(usage: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in usage:
+            return usage[key]
+    return None
+
+
+def extract_sabia_usage(body: dict[str, Any]) -> tuple[int | None, int | None, float | None]:
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return None, None, None
+
+    tokens_input = int_or_none(
+        usage_value(usage, ("prompt_tokens", "input_tokens", "tokens_input", "input"))
+    )
+    tokens_output = int_or_none(
+        usage_value(usage, ("completion_tokens", "output_tokens", "tokens_output", "output"))
+    )
+    custo_estimado_usd = float_or_none(
+        usage_value(usage, ("cost_usd", "estimated_cost_usd", "custo_estimado_usd", "cost"))
+    )
+    return tokens_input, tokens_output, custo_estimado_usd
 
 
 def strip_accents(value: str) -> str:
@@ -607,7 +700,7 @@ def build_prompt(
     ).strip()
 
 
-def call_sabia(api_key: str, model: str, prompt: str, timeout: int, retries: int) -> str:
+def call_sabia(api_key: str, model: str, prompt: str, timeout: int, retries: int) -> SabiaResponse:
     payload = {
         "model": model,
         "messages": [
@@ -625,10 +718,19 @@ def call_sabia(api_key: str, model: str, prompt: str, timeout: int, retries: int
     last_error: Exception | None = None
     for attempt in range(retries + 1):
         request = urllib.request.Request(API_URL, data=data, headers=headers, method="POST")
+        started_at = time.monotonic()
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 body = json.loads(response.read().decode("utf-8"))
-            return body["choices"][0]["message"]["content"]
+            tokens_input, tokens_output, custo_estimado_usd = extract_sabia_usage(body)
+            return SabiaResponse(
+                content=body["choices"][0]["message"]["content"],
+                response_body=body,
+                tempo_resposta_s=round(time.monotonic() - started_at, 3),
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                custo_estimado_usd=custo_estimado_usd,
+            )
         except (urllib.error.URLError, urllib.error.HTTPError, KeyError, json.JSONDecodeError) as exc:
             last_error = exc
             if attempt < retries:
@@ -683,6 +785,74 @@ def normalize_gate_anulacao(raw: dict[str, Any]) -> GateAnulacao:
         evidencia=str(raw.get("evidencia", "")).strip(),
         nivel_confianca=normalize_confidence(str(raw.get("nivel_confianca", ""))),
     )
+
+
+def validar_json_etapa(raw: dict[str, Any], etapa: str) -> tuple[bool, str]:
+    try:
+        if etapa == "gate":
+            normalize_gate_anulacao(raw)
+        elif etapa.upper() in COMPETENCIAS:
+            normalize_avaliacao(raw, etapa.upper())
+        else:
+            return False, f"Etapa desconhecida: {etapa}"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    return True, ""
+
+
+def run_sabia_json_call(
+    api_key: str,
+    model: str,
+    prompt: str,
+    etapa: str,
+    prompt_version: str,
+    timeout: int,
+    retries: int,
+) -> tuple[dict[str, Any], ChamadaAuditoria]:
+    response = call_sabia(api_key, model, prompt, timeout, retries)
+    validacao_ok = False
+    erros_validacao = ""
+    raw: dict[str, Any] = {}
+    json_resposta_bruto = response.content
+
+    try:
+        raw = extract_json(response.content)
+        json_resposta_bruto = json.dumps(raw, ensure_ascii=False, sort_keys=True)
+        validacao_ok, erros_validacao = validar_json_etapa(raw, etapa)
+    except Exception as exc:
+        erros_validacao = f"{type(exc).__name__}: {exc}"
+
+    audit = ChamadaAuditoria(
+        id_chamada=str(uuid.uuid4()),
+        timestamp=datetime.now().replace(microsecond=0),
+        etapa=etapa.lower(),
+        modelo=model,
+        prompt_versao=prompt_version,
+        prompt_hash=prompt_hash(prompt),
+        json_resposta_bruto=json_resposta_bruto,
+        validacao_pydantic_ok=validacao_ok,
+        erros_pydantic=erros_validacao,
+        tempo_resposta_s=response.tempo_resposta_s,
+        tokens_input=response.tokens_input,
+        tokens_output=response.tokens_output,
+        custo_estimado_usd=response.custo_estimado_usd,
+    )
+
+    if not validacao_ok:
+        raise ValueError(f"Resposta inválida do Sabiá na etapa {etapa}: {erros_validacao}")
+
+    return raw, audit
+
+
+def total_tokens_auditoria(chamadas: list[ChamadaAuditoria]) -> int | None:
+    total = 0
+    found = False
+    for chamada in chamadas:
+        for value in (chamada.tokens_input, chamada.tokens_output):
+            if value is not None:
+                total += value
+                found = True
+    return total if found else None
 
 
 def raw_indica_tangenciamento_c2(raw: dict[str, Any]) -> bool:
@@ -754,6 +924,7 @@ def corrigir_competencia(
     competencia: str,
     api_key: str,
     model: str,
+    prompt_version: str,
     tema: str,
     redacao: str,
     status_tema: str,
@@ -763,7 +934,7 @@ def corrigir_competencia(
     prompts_dir: Path,
     timeout: int,
     retries: int,
-) -> tuple[AvaliacaoCompetencia, dict[str, Any]]:
+) -> tuple[AvaliacaoCompetencia, dict[str, Any], ChamadaAuditoria]:
     rubrica = load_competencia_prompt(competencia, prompts_dir)
     prompt = build_prompt(
         competencia,
@@ -775,14 +946,22 @@ def corrigir_competencia(
         status_anulacao,
         "true" if tangenciamento_c2 else "false",
     )
-    content = call_sabia(api_key, model, prompt, timeout, retries)
-    raw = extract_json(content)
-    return normalize_avaliacao(raw, competencia), raw
+    raw, audit = run_sabia_json_call(
+        api_key,
+        model,
+        prompt,
+        competencia.lower(),
+        prompt_version,
+        timeout,
+        retries,
+    )
+    return normalize_avaliacao(raw, competencia), raw, audit
 
 
 def corrigir_redacao(
     api_key: str,
     model: str,
+    prompt_version: str,
     tema: str,
     redacao: str,
     status_tema: str,
@@ -797,7 +976,16 @@ def corrigir_redacao(
 ) -> ResultadoCorrecao:
     started_at = time.monotonic()
     gate_prompt = build_gate_anulacao_prompt(tema, redacao, status_ocr, status_tema, num_linhas)
-    gate_raw = extract_json(call_sabia(api_key, model, gate_prompt, timeout, retries))
+    gate_raw, gate_audit = run_sabia_json_call(
+        api_key,
+        model,
+        gate_prompt,
+        "gate",
+        prompt_version,
+        timeout,
+        retries,
+    )
+    chamadas_auditoria = [gate_audit]
     gate = normalize_gate_anulacao(gate_raw)
     if gate.anulado:
         avaliacoes = avaliacoes_por_anulacao(gate)
@@ -811,6 +999,8 @@ def corrigir_redacao(
             nota_final=nota_final,
             avaliacoes=avaliacoes,
             raw_respostas={"gate": gate_raw},
+            chamadas_auditoria=chamadas_auditoria,
+            custo_tokens_total=total_tokens_auditoria(chamadas_auditoria),
             tempo_processamento_s=round(time.monotonic() - started_at, 3),
         )
 
@@ -821,10 +1011,11 @@ def corrigir_redacao(
     avaliacoes_por_competencia: dict[str, AvaliacaoCompetencia] = {}
     raw_respostas: dict[str, dict[str, Any]] = {"gate": gate_raw}
     for competencia in ORDEM_CORRECAO:
-        avaliacao, raw = corrigir_competencia(
+        avaliacao, raw, audit = corrigir_competencia(
             competencia,
             api_key,
             model,
+            prompt_version,
             tema,
             redacao,
             status_tema,
@@ -835,6 +1026,7 @@ def corrigir_redacao(
             timeout,
             retries,
         )
+        chamadas_auditoria.append(audit)
         raw_respostas[competencia] = raw
         if competencia == "C2" and raw_indica_tangenciamento_c2(raw):
             tangenciamento_c2_detectado = True
@@ -853,6 +1045,8 @@ def corrigir_redacao(
         nota_final=nota_final,
         avaliacoes=avaliacoes,
         raw_respostas=raw_respostas,
+        chamadas_auditoria=chamadas_auditoria,
+        custo_tokens_total=total_tokens_auditoria(chamadas_auditoria),
         tempo_processamento_s=round(time.monotonic() - started_at, 3),
     )
 
@@ -1121,6 +1315,45 @@ def style_calibracao(ws: Any) -> None:
     ws.auto_filter.ref = f"A1:{get_column_letter(len(CALIBRACAO_HEADERS))}{max(ws.max_row, 1)}"
 
 
+def style_auditoria(ws: Any) -> None:
+    header_fill = PatternFill("solid", fgColor="FF9500")
+    header_font = Font(color="1D1D1F", bold=True)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    widths = {
+        "A": 38,
+        "B": 18,
+        "C": 20,
+        "D": 10,
+        "E": 14,
+        "F": 14,
+        "G": 68,
+        "H": 80,
+        "I": 20,
+        "J": 36,
+        "K": 18,
+        "L": 14,
+        "M": 14,
+        "N": 18,
+    }
+    for column, width in widths.items():
+        ws.column_dimensions[column].width = width
+
+    ws.row_dimensions[1].height = 36
+    for row_idx in range(2, ws.max_row + 1):
+        ws.row_dimensions[row_idx].height = 96
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(AUDITORIA_HEADERS))}{max(ws.max_row, 1)}"
+
+
 def build_resumo_row(
     case_id: str,
     data_correcao: datetime,
@@ -1266,6 +1499,30 @@ def build_calibracao_rows(case_id: str, resultado: ResultadoCorrecao) -> list[li
     return rows
 
 
+def build_auditoria_rows(case_id: str, resultado: ResultadoCorrecao) -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    for chamada in resultado.chamadas_auditoria:
+        rows.append(
+            [
+                chamada.id_chamada,
+                case_id,
+                chamada.timestamp,
+                chamada.etapa,
+                chamada.modelo,
+                chamada.prompt_versao,
+                chamada.prompt_hash,
+                chamada.json_resposta_bruto,
+                chamada.validacao_pydantic_ok,
+                chamada.erros_pydantic,
+                chamada.tempo_resposta_s,
+                chamada.tokens_input,
+                chamada.tokens_output,
+                chamada.custo_estimado_usd,
+            ]
+        )
+    return rows
+
+
 def fill_workbook(
     template_path: Path,
     output_path: Path,
@@ -1340,6 +1597,17 @@ def fill_workbook(
         ws_calibracao.append(calibracao_row)
     style_calibracao(ws_calibracao)
 
+    ws_auditoria = wb["Auditoria"] if "Auditoria" in wb.sheetnames else wb.create_sheet("Auditoria")
+    reset_worksheet(ws_auditoria)
+    ws_auditoria.append(AUDITORIA_HEADERS)
+    for auditoria_row in build_auditoria_rows(case_id, resultado):
+        ws_auditoria.append(auditoria_row)
+    for row_idx in range(2, ws_auditoria.max_row + 1):
+        ws_auditoria[f"C{row_idx}"].number_format = "yyyy-mm-dd hh:mm:ss"
+        ws_auditoria[f"K{row_idx}"].number_format = "0.000"
+        ws_auditoria[f"N{row_idx}"].number_format = "0.000000"
+    style_auditoria(ws_auditoria)
+
     wb.save(output_path)
 
 
@@ -1357,6 +1625,7 @@ def main() -> int:
     parser.add_argument("--tangenciamento-c2", action="store_true")
     parser.add_argument("--num-linhas", type=int)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--prompt-version", default=DEFAULT_PROMPT_VERSION)
     parser.add_argument("--timeout", default=90, type=int)
     parser.add_argument("--retries", default=1, type=int)
     parser.add_argument("--dry-run", action="store_true", help="Não chama API; só valida entradas.")
@@ -1403,6 +1672,7 @@ def main() -> int:
     resultado = corrigir_redacao(
         api_key=api_key,
         model=args.model,
+        prompt_version=args.prompt_version,
         tema=tema,
         redacao=redacao,
         status_tema=status_tema,
