@@ -129,9 +129,11 @@ Fluxo correto:
 
 Camadas de OCR:
 
-1. OpenAI Vision, se `OPENAI_API_KEY` estiver no Keychain ou no ambiente;
+1. OpenAI Vision com `gpt-5.2`, se `OPENAI_API_KEY` estiver no Keychain ou no ambiente;
 2. PaddleOCR local, se instalado no `.venv`;
 3. Apple Vision local como fallback.
+
+O modelo da primeira camada pode ser sobrescrito por `OPENAI_VISION_MODEL`.
 
 Arquivos de auditoria:
 

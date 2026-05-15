@@ -265,3 +265,13 @@ Comportamento:
 - Se `OPENAI_API_KEY` estiver disponível no Keychain ou no ambiente, o app tenta transcrição literal por OpenAI Vision.
 - A transcrição é salva em `redacao-openai-vision.txt` e os metadados em `ocr-openai-vision.json`.
 - Mesmo quando a transcrição vem preenchida, o status permanece `parcial` e a correção continua bloqueada até revisão humana.
+
+## [2026-05-15] change | GPT-5.2 como padrão da transcrição OpenAI Vision
+
+Após teste local no CASO-003, `gpt-5.2` produziu transcrição manuscrita mais limpa que `gpt-5.1`.
+
+Decisão:
+
+- `scripts/ocr_openai_vision.py` passa a usar `gpt-5.2` como padrão.
+- `OPENAI_VISION_MODEL` continua disponível para teste controlado de outros modelos.
+- A saída permanece com status `parcial`, exigindo revisão humana antes de correção.

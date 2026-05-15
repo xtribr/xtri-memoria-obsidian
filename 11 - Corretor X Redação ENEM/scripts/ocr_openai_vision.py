@@ -139,7 +139,7 @@ def request_transcription(image_path: Path, model: str, api_key: str) -> dict[st
 def main() -> int:
     parser = argparse.ArgumentParser(description="Transcreve imagem com OpenAI Vision.")
     parser.add_argument("--image", required=True, type=Path)
-    parser.add_argument("--model", default=os.environ.get("OPENAI_VISION_MODEL", "gpt-5.1"))
+    parser.add_argument("--model", default=os.environ.get("OPENAI_VISION_MODEL", "gpt-5.2"))
     args = parser.parse_args()
 
     started_at = time.monotonic()
