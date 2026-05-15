@@ -313,3 +313,15 @@ Comportamento:
 - OCR Seguro só grava `redacao-literal.txt` quando `safe_for_correction=true`.
 - `scripts/run_caso_sabia.sh` bloqueia status OCR diferente de `ok:` por padrão.
 - o prompt do Sabiá recebeu regra de transcrição forense para não normalizar erros do aluno.
+
+## [2026-05-15] change | Correção automática com alerta OCR
+
+Alterado o fluxo para escala operacional.
+
+Decisão:
+
+- o app passa a corrigir automaticamente depois da importação/OCR quando há chave Sabiá disponível;
+- status OCR parcial não bloqueia mais a correção;
+- em status parcial, o runner usa `redacao.txt` e emite aviso;
+- o status OCR é enviado ao Sabiá para reduzir confiança e gerar alerta no Excel;
+- status `ok` continua usando `redacao-literal.txt` como fonte preferencial.

@@ -64,20 +64,20 @@ done
 STATUS_OCR="$(cat "${STATUS_OCR_FILE}")"
 STATUS_OCR_NORMALIZED="$(printf '%s' "${STATUS_OCR}" | tr '[:upper:]' '[:lower:]')"
 
-if [[ -s "${REDACAO_LITERAL_FILE}" ]]; then
+if [[ "${STATUS_OCR_NORMALIZED}" == ok:* && -s "${REDACAO_LITERAL_FILE}" ]]; then
   REDACAO_FILE="${REDACAO_LITERAL_FILE}"
 elif [[ -s "${REDACAO_DRAFT_FILE}" ]]; then
   REDACAO_FILE="${REDACAO_DRAFT_FILE}"
+elif [[ -s "${REDACAO_LITERAL_FILE}" ]]; then
+  REDACAO_FILE="${REDACAO_LITERAL_FILE}"
 else
   echo "Erro: transcrição literal não encontrada em ${REDACAO_LITERAL_FILE} nem rascunho em ${REDACAO_DRAFT_FILE}" >&2
   exit 4
 fi
 
-if [[ "${STATUS_OCR_NORMALIZED}" != ok:* && "${CORRETOR_X_ALLOW_UNSAFE_OCR:-}" != "1" ]]; then
-  echo "Erro: correção bloqueada. Status da transcrição não é ok:" >&2
+if [[ "${STATUS_OCR_NORMALIZED}" != ok:* ]]; then
+  echo "Aviso: status OCR não validado; correção será gerada com alerta de baixa confiança." >&2
   echo "${STATUS_OCR}" >&2
-  echo "Revise/salve a transcrição literal no XTRI-RED ou use CORRETOR_X_ALLOW_UNSAFE_OCR=1 para auditoria manual." >&2
-  exit 5
 fi
 
 set -- \

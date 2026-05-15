@@ -471,6 +471,11 @@ def read_text(path: Path) -> str:
     return text
 
 
+def read_text_or_default(path: Path, default: str) -> str:
+    text = path.read_text(encoding="utf-8").strip()
+    return text if text else default
+
+
 def load_competencia_prompt(competencia: str, prompts_dir: Path) -> str:
     prompt_path = prompts_dir / f"{competencia.lower()}.md"
     if prompt_path.exists():
@@ -1459,7 +1464,23 @@ def build_alertas(status_tema: str, status_ocr: str, resultado: ResultadoCorreca
         alertas.append("tema_ausente")
 
     status_ocr_normalizado = strip_accents(status_ocr).strip().lower()
-    if any(marker in status_ocr_normalizado for marker in ("baixa", "ilegivel", "incerta", "manual", "sem ocr", "revisao humana")):
+    if any(
+        marker in status_ocr_normalizado
+        for marker in (
+            "baixa",
+            "ilegivel",
+            "incerta",
+            "manual",
+            "sem ocr",
+            "revisao humana",
+            "parcial",
+            "ocr seguro",
+            "nao valid",
+            "não valid",
+            "trecho critico",
+            "trecho crítico",
+        )
+    ):
         alertas.append("ocr_revisao_humana_recomendada")
 
     if resultado.anulado:
@@ -1986,9 +2007,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    tema = read_text(args.tema_file)
+    tema = read_text_or_default(args.tema_file, "Tema oficial não informado.")
     redacao = read_text(args.redacao_file)
-    status_tema = args.status_tema or infer_status_tema(tema)
+    status_tema = args.status_tema or ("ausente" if tema == "Tema oficial não informado." else infer_status_tema(tema))
     num_linhas = args.num_linhas if args.num_linhas is not None else estimate_num_linhas(redacao)
     tangenciamento_c2_detectado = args.tangenciamento_c2
 

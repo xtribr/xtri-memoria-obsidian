@@ -43,6 +43,7 @@ struct ImportSummary: Sendable {
     let readyForCorrection: Int
     let pendingOCR: Int
     let skipped: Int
+    let caseDirectories: [String]
     let firstCaseDirectory: String?
     let lastCaseID: String?
 
@@ -327,7 +328,7 @@ final class AppModel: ObservableObject {
                 if let firstCaseDirectory = summary.firstCaseDirectory {
                     selectedCaseID = firstCaseDirectory
                 }
-                log = summary.logMessage
+                finishImport(summary)
             case .failure(let error):
                 log = "Falha ao importar pasta: \(error.localizedDescription)"
             }
@@ -364,10 +365,66 @@ final class AppModel: ObservableObject {
                 if let firstCaseDirectory = summary.firstCaseDirectory {
                     selectedCaseID = firstCaseDirectory
                 }
-                log = summary.logMessage
+                finishImport(summary)
             case .failure(let error):
                 log = "Falha ao importar arquivo: \(error.localizedDescription)"
             }
+        }
+    }
+
+    private func finishImport(_ summary: ImportSummary) {
+        if apiKeyAvailable {
+            autoCorrectCaseDirectories(summary.caseDirectories, prefixLog: summary.logMessage)
+        } else {
+            log = summary.logMessage + "\nCorreção automática não iniciada: Sabiá sem chave disponível."
+        }
+    }
+
+    private func autoCorrectCaseDirectories(_ directories: [String], prefixLog: String) {
+        let entriesURL = vaultURL.appendingPathComponent("entradas")
+        let targets = directories.filter { directoryName in
+            let caseURL = entriesURL.appendingPathComponent(directoryName, isDirectory: true)
+            return !readBestTranscription(in: caseURL).isEmpty
+        }
+
+        guard !targets.isEmpty else {
+            log = prefixLog + "\nNenhum caso com transcrição disponível para correção automática."
+            return
+        }
+
+        let vaultURL = self.vaultURL
+        let key = apiKey
+        isRunning = true
+        log = prefixLog + "\nCorreção automática iniciada para \(targets.count) caso(s)."
+
+        Task {
+            let output = await Task.detached {
+                var lines = [prefixLog, "Correção automática:"]
+                for (index, directoryName) in targets.enumerated() {
+                    let caseID = directoryName.uppercased()
+                    let studentNameURL = vaultURL
+                        .appendingPathComponent("entradas")
+                        .appendingPathComponent(directoryName)
+                        .appendingPathComponent("aluno-nome.txt")
+                    let studentName = readText(studentNameURL)
+                    let result = ProcessRunner.runCase(
+                        vaultURL: vaultURL,
+                        caseDirectory: directoryName,
+                        caseID: caseID,
+                        studentID: studentName.isEmpty ? caseID : studentName,
+                        apiKey: key,
+                        dryRun: false
+                    )
+                    lines.append("[\(index + 1)/\(targets.count)] \(caseID): código \(result.exitCode)")
+                    if !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        lines.append(result.output)
+                    }
+                }
+                return lines.joined(separator: "\n")
+            }.value
+            isRunning = false
+            log = output
+            refresh()
         }
     }
 
@@ -512,7 +569,11 @@ final class AppModel: ObservableObject {
             case .success(let ocrResult):
                 refresh()
                 selectedCaseID = selectedCase.id
-                log = ocrResult.logMessage
+                if apiKeyAvailable, ocrResult.characterCount > 0 {
+                    autoCorrectCaseDirectories([selectedCase.directoryName], prefixLog: ocrResult.logMessage)
+                } else {
+                    log = ocrResult.logMessage
+                }
             case .failure(let error):
                 refresh()
                 selectedCaseID = selectedCase.id
@@ -761,6 +822,7 @@ enum CaseImporter {
             readyForCorrection: readyForCorrection,
             pendingOCR: pendingOCR,
             skipped: skipped,
+            caseDirectories: createdDirectories,
             firstCaseDirectory: createdDirectories.first,
             lastCaseID: lastCaseID
         )
@@ -1086,7 +1148,7 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
             exportURL: exportURL,
             hasExport: FileManager.default.fileExists(atPath: exportURL.path),
             hasTranscription: hasTranscription,
-            isReadyForCorrection: isCorrectionReady(essayText: essayText, statusOCR: statusOCR),
+            isReadyForCorrection: hasTranscription,
             canRunOCR: canRunOCR
         )
     }
@@ -1391,11 +1453,11 @@ struct ContentView: View {
         if item.hasExport {
             return "Excel gerado"
         }
-        if item.isReadyForCorrection {
+        if isOKStatus(item.statusOCR), item.isReadyForCorrection {
             return "Pronto para corrigir"
         }
         if item.hasTranscription {
-            return "Revisar transcrição"
+            return "Corrigir com alerta OCR"
         }
         return "Aguardando OCR"
     }
@@ -1404,8 +1466,11 @@ struct ContentView: View {
         if item.hasExport {
             return .green
         }
-        if item.isReadyForCorrection {
+        if isOKStatus(item.statusOCR), item.isReadyForCorrection {
             return .blue
+        }
+        if item.hasTranscription {
+            return .orange
         }
         return .orange
     }

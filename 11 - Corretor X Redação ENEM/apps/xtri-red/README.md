@@ -42,13 +42,13 @@ Observação de interface: os prompts e rubricas continuam no vault e são usado
 
 Use `Importar Pasta` quando houver um lote com um arquivo por aluno. Use `Importar Arquivo` para casos avulsos ou seleção manual de poucos arquivos. Os botões também aparecem na barra lateral como `Pasta` e `Arquivos`.
 
-Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR em camadas: OCR Seguro com OpenAI Vision `gpt-5.2` quando `OPENAI_API_KEY` estiver disponível, PaddleOCR (`lang=pt`) quando as dependências estiverem instaladas, e Apple Vision como fallback local. A camada OpenAI Vision faz duas chamadas: transcrição literal e auditoria visual independente, preservando acentos, erros, hífens, quebras de linha e parágrafos sempre que perceptíveis. Só casos com confiança alta, boa similaridade e sem trechos críticos recebem status `ok`; os demais ficam `parcial` e não liberam `Corrigir` até a transcrição ser revisada e salva no app. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição revisada.
+Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR em camadas: OCR Seguro com OpenAI Vision `gpt-5.2` quando `OPENAI_API_KEY` estiver disponível, PaddleOCR (`lang=pt`) quando as dependências estiverem instaladas, e Apple Vision como fallback local. A camada OpenAI Vision faz duas chamadas: transcrição literal e auditoria visual independente, preservando acentos, erros, hífens, quebras de linha e parágrafos sempre que perceptíveis. Casos com confiança alta, boa similaridade e sem trechos críticos recebem status `ok`; os demais ficam `parcial`, mas ainda podem ser corrigidos automaticamente com alerta de confiança/risco no Excel. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição.
 
 Casos de imagem podem ser processados ou reprocessados pelo botão `Rodar OCR`/`Reprocessar OCR`, exibido no painel do caso quando há `original.ext` compatível.
 
-Para revisar imagem manuscrita, use `Abrir imagem`, corrija a transcrição no editor e clique em `Salvar transcrição`. O status muda para `ok` e o caso fica liberado para dry-run/correção.
+Para revisar imagem manuscrita, use `Abrir imagem`, corrija a transcrição no editor e clique em `Salvar transcrição`. O status muda para `ok`, mas a correção automática não depende dessa etapa: OCR parcial é corrigido com alerta explícito para escala.
 
-Regra de segurança: a correção usa `redacao-literal.txt` quando o arquivo existe. `redacao.txt` é mantido como rascunho/compatibilidade. O runner `scripts/run_caso_sabia.sh` bloqueia qualquer caso cujo `status-ocr.txt` não comece com `ok:`, salvo override explícito para auditoria manual.
+Regra de segurança: a correção usa `redacao-literal.txt` quando o arquivo existe e o status é `ok`; quando o OCR fica parcial, usa `redacao.txt` como rascunho e envia `status-ocr.txt` para o Sabiá reduzir confiança e registrar alerta. O app dispara correção automática após importação/OCR quando a chave do Sabiá está disponível.
 
 Para instalar o OCR opcional com PaddleOCR:
 
