@@ -31,7 +31,8 @@ Este app é assinado ad-hoc para uso local. Para distribuição externa, ainda s
 - Importar um ou mais arquivos avulsos.
 - Ler casos em `entradas/caso-*`.
 - Ler prompts/rubricas em `app-config/prompts`.
-- Mostrar tema, status da transcrição e prévia da redação.
+- Mostrar tema, status da transcrição e editor de transcrição.
+- Salvar transcrição revisada antes de liberar correção.
 - Rodar dry-run ou correção real chamando `scripts/run_caso_sabia.sh`.
 - Abrir o Excel gerado.
 
@@ -41,9 +42,11 @@ Observação de interface: os prompts e rubricas continuam no vault e são usado
 
 Use `Importar Pasta` quando houver um lote com um arquivo por aluno. Use `Importar Arquivo` para casos avulsos ou seleção manual de poucos arquivos. Os botões também aparecem na barra lateral como `Pasta` e `Arquivos`.
 
-Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR local com PaddleOCR (`lang=pt`) quando as dependências estão instaladas; se PaddleOCR falhar ou não estiver disponível, o app cai para Apple Vision. Quando há texto extraído, o caso fica marcado como `parcial` para revisão antes da correção. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição em `redacao.txt`.
+Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR local com PaddleOCR (`lang=pt`) quando as dependências estão instaladas; se PaddleOCR falhar ou não estiver disponível, o app cai para Apple Vision. Quando há texto extraído por OCR, o caso fica marcado como `parcial` e não libera `Corrigir` até a transcrição ser revisada e salva no app. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição revisada.
 
 Casos de imagem podem ser processados ou reprocessados pelo botão `Rodar OCR`/`Reprocessar OCR`, exibido no painel do caso quando há `original.ext` compatível.
+
+Para revisar imagem manuscrita, use `Abrir imagem`, corrija a transcrição no editor e clique em `Salvar transcrição`. O status muda para `ok` e o caso fica liberado para dry-run/correção.
 
 Para instalar o OCR opcional com PaddleOCR:
 

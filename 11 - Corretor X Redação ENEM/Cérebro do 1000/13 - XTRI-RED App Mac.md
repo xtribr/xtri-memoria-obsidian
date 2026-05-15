@@ -114,6 +114,19 @@ O bundle local fica em `apps/xtri-red/dist/XTRI-RED.app`.
 
 Observação: esta etapa cria um app clicável assinado ad-hoc para uso local. Distribuição fora deste Mac ainda exige assinatura com certificado Apple Developer e notarização.
 
+## Revisão de Transcrição
+
+Regra operacional atual: OCR de imagem manuscrita nunca libera correção automaticamente.
+
+O PaddleOCR/Apple Vision pode preencher `redacao.txt` como rascunho, mas enquanto `status-ocr.txt` estiver como `parcial`, `ocr_degradado`, `aguardando_ocr` ou `revisao_humana`, o app mantém `Corrigir` bloqueado.
+
+Fluxo correto:
+
+1. abrir a imagem original no app;
+2. revisar ou refazer a transcrição no editor;
+3. clicar em `Salvar transcrição`;
+4. corrigir apenas depois do status `ok`.
+
 ## Regra de segurança
 
 A chave `SABIA_API_KEY` não deve ser hardcoded nem salva no Git.

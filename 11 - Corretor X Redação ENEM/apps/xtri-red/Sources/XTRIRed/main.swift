@@ -25,10 +25,10 @@ struct EssayCase: Identifiable, Hashable, Sendable {
     let title: String
     let theme: String
     let statusOCR: String
-    let textPreview: String
     let entryURL: URL
     let exportURL: URL
     let hasExport: Bool
+    let hasTranscription: Bool
     let isReadyForCorrection: Bool
     let canRunOCR: Bool
 }
@@ -51,7 +51,7 @@ struct ImportSummary: Sendable {
             "Importação concluída.",
             "Casos criados: \(created)",
             "Prontos para correção: \(readyForCorrection)",
-            "Aguardando OCR: \(pendingOCR)",
+            "Aguardando OCR/revisão: \(pendingOCR)",
             "Arquivos ignorados: \(skipped)"
         ]
         if let lastCaseID {
@@ -66,13 +66,15 @@ struct OCRResult: Sendable {
     let characterCount: Int
     let lineCount: Int
     let status: String
+    let readyForCorrection: Bool
 
     var logMessage: String {
         [
             "OCR concluído para \(caseID).",
             "Caracteres extraídos: \(characterCount)",
             "Linhas detectadas: \(lineCount)",
-            "Status: \(status)"
+            "Status: \(status)",
+            readyForCorrection ? "Pronto para correção." : "Revisão da transcrição obrigatória antes da correção."
         ].joined(separator: "\n")
     }
 }
@@ -187,11 +189,16 @@ enum KeychainStore {
 final class AppModel: ObservableObject {
     @Published var vaultPath = defaultVaultPath
     @Published var cases: [EssayCase] = []
-    @Published var selectedCaseID: EssayCase.ID?
+    @Published var selectedCaseID: EssayCase.ID? {
+        didSet {
+            syncTranscriptionDraft()
+        }
+    }
     @Published var apiKey = ""
     @Published var keychainStatus = "Chave não salva."
     @Published var hasSavedAPIKey = false
     @Published var isEditingAPIKey = false
+    @Published var transcriptionDraft = ""
     @Published var log = "Pronto."
     @Published var isRunning = false
 
@@ -221,6 +228,7 @@ final class AppModel: ObservableObject {
         } else {
             selectedCaseID = loadedCases.first?.id
         }
+        syncTranscriptionDraft()
         log = "Vault carregado: \(loadedCases.count) caso(s)."
     }
 
@@ -393,7 +401,7 @@ final class AppModel: ObservableObject {
             return
         }
         guard selectedCase.isReadyForCorrection else {
-            log = "\(selectedCase.caseID) ainda não tem transcrição em redacao.txt. Faça OCR ou importe um .txt antes de corrigir."
+            log = "\(selectedCase.caseID) ainda precisa de transcrição revisada. Corrija o texto no painel e clique em Salvar transcrição antes de corrigir."
             return
         }
         if !dryRun, !apiKeyAvailable {
@@ -457,6 +465,56 @@ final class AppModel: ObservableObject {
                 log = "Falha no OCR de \(caseID): \(error.localizedDescription)"
             }
         }
+    }
+
+    func saveTranscriptionForSelectedCase() {
+        guard let selectedCase else {
+            log = "Nenhum caso selecionado."
+            return
+        }
+
+        let text = transcriptionDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            log = "\(selectedCase.caseID) está sem transcrição útil."
+            return
+        }
+
+        do {
+            try text.write(
+                to: selectedCase.entryURL.appendingPathComponent("redacao.txt"),
+                atomically: true,
+                encoding: .utf8
+            )
+            try "ok: transcricao revisada manualmente no XTRI-RED; pronta para correcao.".write(
+                to: selectedCase.entryURL.appendingPathComponent("status-ocr.txt"),
+                atomically: true,
+                encoding: .utf8
+            )
+            let currentID = selectedCase.id
+            refresh()
+            selectedCaseID = currentID
+            transcriptionDraft = text
+            log = "Transcrição salva para \(selectedCase.caseID). Caso liberado para correção."
+        } catch {
+            log = "Falha ao salvar transcrição: \(error.localizedDescription)"
+        }
+    }
+
+    func openOriginalForSelectedCase() {
+        guard let selectedCase else { return }
+        guard let imageURL = originalImageURL(in: selectedCase.entryURL) else {
+            log = "\(selectedCase.caseID) não tem imagem original compatível."
+            return
+        }
+        NSWorkspace.shared.open(imageURL)
+    }
+
+    func syncTranscriptionDraft() {
+        guard let selectedCase else {
+            transcriptionDraft = ""
+            return
+        }
+        transcriptionDraft = readText(selectedCase.entryURL.appendingPathComponent("redacao.txt"))
     }
 
     func openExport() {
@@ -608,7 +666,7 @@ enum CaseImporter {
                 }
             } else if isImageFile {
                 let ocrResult = try runImageOCR(originalURL: originalURL, caseURL: caseURL, caseID: caseID)
-                if ocrResult.characterCount > 0 {
+                if ocrResult.readyForCorrection {
                     readyForCorrection += 1
                 } else {
                     pendingOCR += 1
@@ -709,7 +767,8 @@ enum CaseImporter {
                 caseID: caseID,
                 characterCount: paddleResult.characterCount,
                 lineCount: paddleResult.lineCount,
-                status: status
+                status: status,
+                readyForCorrection: isCorrectionReady(essayText: paddleResult.text, statusOCR: status)
             )
         }
 
@@ -735,7 +794,8 @@ enum CaseImporter {
             caseID: caseID,
             characterCount: text.count,
             lineCount: lines.count,
-            status: status
+            status: status,
+            readyForCorrection: isCorrectionReady(essayText: text, statusOCR: status)
         )
     }
 
@@ -843,9 +903,9 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
         let theme = readText(url.appendingPathComponent("tema.txt"))
         let statusOCR = readText(url.appendingPathComponent("status-ocr.txt"))
         let essayText = readText(url.appendingPathComponent("redacao.txt"))
-        let preview = essayText.isEmpty ? "Sem transcrição encontrada." : essayText
         let exportURL = exportsURL.appendingPathComponent("\(caseID).xlsx")
-        let canRunOCR = hasCompatibleOriginalImage(in: url)
+        let canRunOCR = originalImageURL(in: url) != nil
+        let hasTranscription = !essayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         return EssayCase(
             id: directoryName,
@@ -855,11 +915,11 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
             title: "\(caseID) - \(theme.isEmpty ? "Tema não informado" : theme)",
             theme: theme,
             statusOCR: statusOCR,
-            textPreview: preview,
             entryURL: url,
             exportURL: exportURL,
             hasExport: FileManager.default.fileExists(atPath: exportURL.path),
-            isReadyForCorrection: !essayText.isEmpty,
+            hasTranscription: hasTranscription,
+            isReadyForCorrection: isCorrectionReady(essayText: essayText, statusOCR: statusOCR),
             canRunOCR: canRunOCR
         )
     }
@@ -871,14 +931,41 @@ private func readText(_ url: URL) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 }
 
-private func hasCompatibleOriginalImage(in caseURL: URL) -> Bool {
+private func isCorrectionReady(essayText: String, statusOCR: String) -> Bool {
+    guard !essayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+
+    let status = statusOCR
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+
+    if status.hasPrefix("ok:") {
+        return true
+    }
+
+    let blockedStatusPrefixes = [
+        "aguardando_ocr",
+        "ocr_degradado",
+        "parcial",
+        "revisao_humana"
+    ]
+    if blockedStatusPrefixes.contains(where: { status.hasPrefix($0) }) {
+        return false
+    }
+    if status.contains("revisar") || status.contains("pendente") {
+        return false
+    }
+
+    return true
+}
+
+private func originalImageURL(in caseURL: URL) -> URL? {
     let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "tif", "tiff"]
     let files = (try? FileManager.default.contentsOfDirectory(
         at: caseURL,
         includingPropertiesForKeys: [.isRegularFileKey],
         options: [.skipsHiddenFiles]
     )) ?? []
-    return files.contains { url in
+    return files.first { url in
         url.lastPathComponent.lowercased().hasPrefix("original.")
             && imageExtensions.contains(url.pathExtension.lowercased())
     }
@@ -1094,18 +1181,27 @@ struct ContentView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
-            Text("Redação")
-                .font(.headline)
-            ScrollView {
-                Text(item.textPreview)
-                    .font(.system(.body, design: .serif))
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+            HStack {
+                Text("Transcrição")
+                    .font(.headline)
+                Spacer()
+                if item.canRunOCR {
+                    Button("Abrir imagem") {
+                        model.openOriginalForSelectedCase()
+                    }
+                }
+                Button("Salvar transcrição") {
+                    model.saveTranscriptionForSelectedCase()
+                }
+                .disabled(model.isRunning || model.transcriptionDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            TextEditor(text: $model.transcriptionDraft)
+                .font(.system(.body, design: .serif))
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 
@@ -1115,6 +1211,9 @@ struct ContentView: View {
         }
         if item.isReadyForCorrection {
             return "Pronto para corrigir"
+        }
+        if item.hasTranscription {
+            return "Revisar transcrição"
         }
         return "Aguardando OCR"
     }

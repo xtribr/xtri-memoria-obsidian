@@ -233,3 +233,17 @@ Comportamento:
 - O app tenta PaddleOCR com `lang=pt` quando o `.venv` possui `paddlepaddle` e `paddleocr`.
 - Se PaddleOCR falhar, o app mantém fallback automático para Apple Vision.
 - A transcrição gerada por PaddleOCR também é salva em `redacao-paddleocr.txt` e metadados em `ocr-paddle.json`.
+
+## [2026-05-15] fix | Bloqueio de correção com OCR parcial
+
+Após validação real no CASO-003, o OCR manuscrito com PaddleOCR foi considerado insuficiente para correção automática.
+
+Nota principal:
+
+- [[13 - XTRI-RED App Mac]]
+
+Decisão:
+
+- OCR de imagem manuscrita passa a ser tratado como rascunho de transcrição.
+- Status `parcial`, `ocr_degradado`, `aguardando_ocr` e `revisao_humana` bloqueiam `Dry-run` e `Corrigir`.
+- O app agora permite abrir a imagem original, editar a transcrição e liberar o caso apenas ao salvar a transcrição revisada com status `ok`.
