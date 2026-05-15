@@ -107,6 +107,9 @@ CALIBRACAO_HEADERS = [
     "classificacao",
     "justificativa",
 ]
+REPERTORIO_SUBTIPO_ALIASES = {
+    "pequeno manual antirracista": "djamila_ribeiro",
+}
 
 
 RUBRICAS = {
@@ -287,7 +290,7 @@ FORMATO_JSON_C4 = """{{
   "articulacao_interparagrafo": "plena|consistente|mediana|insuficiente|precaria|ausente",
   "diversidade_coesiva": "alta|media|baixa",
   "inadequacoes_identificadas": [
-    {{"tipo": "conector_sem_relacao|empilhamento|repeticao_inadequada|paragrafo_isolado", "trecho": "citação"}}
+    {{"tipo": "conector_sem_relacao|empilhamento|repeticao_inadequada|paragrafo_isolado", "trecho": "citação", "justificativa": "breve"}}
   ],
   "sugestao": "orientação prática",
   "nivel_confianca": "alta|media|baixa"
@@ -916,6 +919,38 @@ def text_or_blank(value: Any) -> str:
     return text
 
 
+def slugify_calibracao(value: Any) -> str:
+    text = strip_accents(text_or_blank(value)).lower()
+    tokens = re.findall(r"[a-z0-9]+", text)
+    return "_".join(tokens)
+
+
+def repertorio_subtipo(referencia: Any) -> str:
+    text = text_or_blank(referencia)
+    if not text:
+        return "repertorio"
+
+    normalized_text = strip_accents(text).lower()
+    for alias, slug in REPERTORIO_SUBTIPO_ALIASES.items():
+        if alias in normalized_text:
+            return slug
+
+    if " - " in text:
+        first_segment = text.split(" - ", 1)[0]
+        slug = slugify_calibracao(first_segment)
+        if slug:
+            return slug
+
+    match = re.match(r"(.+?),\s+d[eoas]*\s+(.+)$", text, flags=re.IGNORECASE)
+    if match:
+        title = slugify_calibracao(match.group(1))
+        author_tokens = re.findall(r"[a-z0-9]+", strip_accents(match.group(2)).lower())
+        if title and author_tokens:
+            return f"{title}_{author_tokens[-1]}"
+
+    return slugify_calibracao(text) or "repertorio"
+
+
 def build_alertas(status_tema: str, status_ocr: str, resultado: ResultadoCorrecao) -> str:
     alertas: list[str] = []
     status_tema_normalizado = strip_accents(status_tema).strip().lower()
@@ -1163,16 +1198,15 @@ def append_calibracao_c2(rows: list[list[str]], case_id: str, raw_c2: dict[str, 
     for repertorio in repertorios:
         if not isinstance(repertorio, dict):
             continue
+        referencia = text_or_blank(repertorio.get("referencia"))
         classificacao = text_or_blank(repertorio.get("classificacao"))
-        classificacao_normalizada = strip_accents(classificacao).strip().lower()
-        subtipo = f"repertorio_{classificacao_normalizada}" if classificacao_normalizada else "repertorio"
         rows.append(
             [
                 case_id,
                 "C2",
                 "repertorio",
-                subtipo,
-                text_or_blank(repertorio.get("referencia")),
+                repertorio_subtipo(referencia),
+                referencia,
                 "",
                 classificacao,
                 text_or_blank(repertorio.get("justificativa")),
@@ -1197,7 +1231,7 @@ def append_calibracao_c4(rows: list[list[str]], case_id: str, raw_c4: dict[str, 
                 text_or_blank(inadequacao.get("trecho")),
                 "",
                 "",
-                "",
+                text_or_blank(inadequacao.get("justificativa")),
             ]
         )
 
@@ -1218,7 +1252,7 @@ def append_calibracao_c5(rows: list[list[str]], case_id: str, raw_c5: dict[str, 
                 trecho,
                 "",
                 "",
-                "elemento_identificado" if trecho else "elemento_ausente",
+                f"{subtipo} identificado" if trecho else f"{subtipo} ausente",
             ]
         )
 

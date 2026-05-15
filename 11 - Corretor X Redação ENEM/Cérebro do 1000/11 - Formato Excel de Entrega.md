@@ -105,11 +105,19 @@ Colunas:
 Tipos de apontamento:
 
 - `desvio`: desvios de C1, com subtipo gramatical e gravidade;
-- `repertorio`: repertórios de C2, com classificação `produtivo`, `bolso` ou `nao_legitimado`;
+- `repertorio`: repertórios de C2, com `subtipo` normalizado a partir da referência e classificação `produtivo`, `bolso` ou `nao_legitimado`;
 - `inadequacao_coesiva`: problemas de C4, como `conector_sem_relacao`, `empilhamento`, `repeticao_inadequada` ou `paragrafo_isolado`;
 - `elemento_proposta`: elementos de C5, com subtipo `agente`, `acao`, `meio`, `efeito` ou `detalhamento`.
 
-Para C5, o script registra os cinco elementos esperados. Quando um elemento não for identificado, `trecho_evidencia` fica vazio e `justificativa` recebe `elemento_ausente`.
+Para C5, o script registra os cinco elementos esperados. Quando um elemento não for identificado, `trecho_evidencia` fica vazio e `justificativa` recebe `{subtipo} ausente`.
+
+Exemplos de linhas:
+
+- `red_001 | C1 | desvio | concordancia | "as crenças do africano foram" | media | |`;
+- `red_001 | C2 | repertorio | utopia_more | "Utopia, de Thomas More" | | bolso | citação sem contextualização`;
+- `red_001 | C2 | repertorio | djamila_ribeiro | "Pequeno Manual Antirracista" | | produtivo | obra explicada e articulada à tese`;
+- `red_001 | C4 | inadequacao_coesiva | conector_sem_relacao | "portanto, vale ressaltar" | | | "portanto" sem relação conclusiva`;
+- `red_001 | C5 | elemento_proposta | agente | "Ministério da Educação" | | | agente identificado`.
 
 ## Listas
 
