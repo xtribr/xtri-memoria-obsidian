@@ -2,6 +2,7 @@ import AppKit
 import Security
 import SwiftUI
 import UniformTypeIdentifiers
+import Vision
 
 private let defaultVaultPath = "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM"
 
@@ -29,6 +30,7 @@ struct EssayCase: Identifiable, Hashable, Sendable {
     let exportURL: URL
     let hasExport: Bool
     let isReadyForCorrection: Bool
+    let canRunOCR: Bool
 }
 
 struct BrainPrompt: Identifiable, Hashable {
@@ -43,7 +45,7 @@ struct ProcessResult: Sendable {
     let output: String
 }
 
-struct ImportSummary {
+struct ImportSummary: Sendable {
     let created: Int
     let readyForCorrection: Int
     let pendingOCR: Int
@@ -63,6 +65,22 @@ struct ImportSummary {
             lines.append("Último caso: \(lastCaseID)")
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+struct OCRResult: Sendable {
+    let caseID: String
+    let characterCount: Int
+    let lineCount: Int
+    let status: String
+
+    var logMessage: String {
+        [
+            "OCR concluído para \(caseID).",
+            "Caracteres extraídos: \(characterCount)",
+            "Linhas detectadas: \(lineCount)",
+            "Status: \(status)"
+        ].joined(separator: "\n")
     }
 }
 
@@ -218,15 +236,26 @@ final class AppModel: ObservableObject {
 
         guard panel.runModal() == .OK, let sourceURL = panel.url else { return }
 
-        do {
-            let summary = try CaseImporter.importFolder(sourceURL: sourceURL, vaultURL: vaultURL, theme: theme)
-            refresh()
-            if let firstCaseDirectory = summary.firstCaseDirectory {
-                selectedCaseID = firstCaseDirectory
+        let vaultURL = self.vaultURL
+        isRunning = true
+        log = "Importando pasta e rodando OCR quando houver imagem..."
+        Task {
+            let result = await Task.detached {
+                Result {
+                    try CaseImporter.importFolder(sourceURL: sourceURL, vaultURL: vaultURL, theme: theme)
+                }
+            }.value
+            isRunning = false
+            switch result {
+            case .success(let summary):
+                refresh()
+                if let firstCaseDirectory = summary.firstCaseDirectory {
+                    selectedCaseID = firstCaseDirectory
+                }
+                log = summary.logMessage
+            case .failure(let error):
+                log = "Falha ao importar pasta: \(error.localizedDescription)"
             }
-            log = summary.logMessage
-        } catch {
-            log = "Falha ao importar pasta: \(error.localizedDescription)"
         }
     }
 
@@ -243,15 +272,27 @@ final class AppModel: ObservableObject {
 
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
 
-        do {
-            let summary = try CaseImporter.importFiles(panel.urls, vaultURL: vaultURL, theme: theme)
-            refresh()
-            if let firstCaseDirectory = summary.firstCaseDirectory {
-                selectedCaseID = firstCaseDirectory
+        let urls = panel.urls
+        let vaultURL = self.vaultURL
+        isRunning = true
+        log = "Importando arquivo(s) e rodando OCR quando houver imagem..."
+        Task {
+            let result = await Task.detached {
+                Result {
+                    try CaseImporter.importFiles(urls, vaultURL: vaultURL, theme: theme)
+                }
+            }.value
+            isRunning = false
+            switch result {
+            case .success(let summary):
+                refresh()
+                if let firstCaseDirectory = summary.firstCaseDirectory {
+                    selectedCaseID = firstCaseDirectory
+                }
+                log = summary.logMessage
+            case .failure(let error):
+                log = "Falha ao importar arquivo: \(error.localizedDescription)"
             }
-            log = summary.logMessage
-        } catch {
-            log = "Falha ao importar arquivo: \(error.localizedDescription)"
         }
     }
 
@@ -370,6 +411,41 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func runOCRForSelectedCase() {
+        guard let selectedCase else {
+            log = "Nenhum caso selecionado."
+            return
+        }
+        guard selectedCase.canRunOCR else {
+            log = "\(selectedCase.caseID) não tem imagem original compatível para OCR."
+            return
+        }
+
+        let caseURL = selectedCase.entryURL
+        let caseID = selectedCase.caseID
+        isRunning = true
+        log = "Rodando OCR em \(caseID)..."
+
+        Task {
+            let result = await Task.detached {
+                Result {
+                    try CaseImporter.runOCRForCase(caseURL: caseURL, caseID: caseID)
+                }
+            }.value
+            isRunning = false
+            switch result {
+            case .success(let ocrResult):
+                refresh()
+                selectedCaseID = selectedCase.id
+                log = ocrResult.logMessage
+            case .failure(let error):
+                refresh()
+                selectedCaseID = selectedCase.id
+                log = "Falha no OCR de \(caseID): \(error.localizedDescription)"
+            }
+        }
+    }
+
     func openExport() {
         guard let selectedCase else { return }
         NSWorkspace.shared.open(selectedCase.exportURL)
@@ -424,9 +500,25 @@ enum ProcessRunner {
 
 enum CaseImporter {
     private static let textExtensions: Set<String> = ["txt"]
-    private static let pendingOCRExtensions: Set<String> = [
-        "pdf", "jpg", "jpeg", "png", "heic", "tif", "tiff"
-    ]
+    private static let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "tif", "tiff"]
+    private static let copyOnlyExtensions: Set<String> = ["pdf"]
+
+    enum ImportError: LocalizedError {
+        case cannotReadImage(URL)
+        case cannotCreateCGImage(URL)
+        case noCompatibleImage(URL)
+
+        var errorDescription: String? {
+            switch self {
+            case .cannotReadImage(let url):
+                return "Não foi possível ler a imagem: \(url.lastPathComponent)."
+            case .cannotCreateCGImage(let url):
+                return "Não foi possível preparar a imagem para OCR: \(url.lastPathComponent)."
+            case .noCompatibleImage(let url):
+                return "Nenhuma imagem original compatível encontrada em \(url.lastPathComponent)."
+            }
+        }
+    }
 
     static func importFolder(sourceURL: URL, vaultURL: URL, theme: String) throws -> ImportSummary {
         let fileManager = FileManager.default
@@ -458,9 +550,10 @@ enum CaseImporter {
         for sourceURL in files.sorted(by: { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }) {
             let fileExtension = sourceURL.pathExtension.lowercased()
             let isTextFile = textExtensions.contains(fileExtension)
-            let isOCRPendingFile = pendingOCRExtensions.contains(fileExtension)
+            let isImageFile = imageExtensions.contains(fileExtension)
+            let isCopyOnlyFile = copyOnlyExtensions.contains(fileExtension)
 
-            guard isTextFile || isOCRPendingFile else {
+            guard isTextFile || isImageFile || isCopyOnlyFile else {
                 skipped += 1
                 continue
             }
@@ -484,7 +577,7 @@ enum CaseImporter {
             try write(
                 [
                     "arquivo_original=\(sourceURL.lastPathComponent)",
-                    "tipo_importacao=\(isTextFile ? "texto" : "ocr_pendente")",
+                    "tipo_importacao=\(importType(isTextFile: isTextFile, isImageFile: isImageFile))",
                     "criado_em=\(ISO8601DateFormatter().string(from: Date()))"
                 ].joined(separator: "\n"),
                 to: caseURL.appendingPathComponent("metadados-importacao.txt")
@@ -500,9 +593,16 @@ enum CaseImporter {
                     try write("ok: transcricao importada de arquivo .txt; sem OCR automatico.", to: caseURL.appendingPathComponent("status-ocr.txt"))
                     readyForCorrection += 1
                 }
+            } else if isImageFile {
+                let ocrResult = try runImageOCR(originalURL: originalURL, caseURL: caseURL, caseID: caseID)
+                if ocrResult.characterCount > 0 {
+                    readyForCorrection += 1
+                } else {
+                    pendingOCR += 1
+                }
             } else {
                 try write("", to: caseURL.appendingPathComponent("redacao.txt"))
-                try write("aguardando_ocr: arquivo original importado; transcricao pendente.", to: caseURL.appendingPathComponent("status-ocr.txt"))
+                try write("aguardando_ocr: PDF importado; OCR automatico de PDF ainda nao disponivel.", to: caseURL.appendingPathComponent("status-ocr.txt"))
                 pendingOCR += 1
             }
 
@@ -519,6 +619,21 @@ enum CaseImporter {
             firstCaseDirectory: createdDirectories.first,
             lastCaseID: lastCaseID
         )
+    }
+
+    static func runOCRForCase(caseURL: URL, caseID: String) throws -> OCRResult {
+        let originals = try FileManager.default.contentsOfDirectory(
+            at: caseURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+        guard let imageURL = originals.first(where: { url in
+            url.lastPathComponent.lowercased().hasPrefix("original.")
+                && imageExtensions.contains(url.pathExtension.lowercased())
+        }) else {
+            throw ImportError.noCompatibleImage(caseURL)
+        }
+        return try runImageOCR(originalURL: imageURL, caseURL: caseURL, caseID: caseID)
     }
 
     private static func nextCaseNumber(entriesURL: URL) -> Int {
@@ -557,6 +672,73 @@ enum CaseImporter {
         return try String(contentsOf: url, encoding: .isoLatin1)
     }
 
+    private static func importType(isTextFile: Bool, isImageFile: Bool) -> String {
+        if isTextFile {
+            return "texto"
+        }
+        if isImageFile {
+            return "imagem_ocr_automatico"
+        }
+        return "pdf_ocr_pendente"
+    }
+
+    private static func runImageOCR(originalURL: URL, caseURL: URL, caseID: String) throws -> OCRResult {
+        let text = try recognizeText(in: originalURL).trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = text
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let status: String
+
+        if text.isEmpty {
+            status = "ocr_degradado: OCR automatico nao extraiu texto util; revisar imagem manualmente."
+            try write("", to: caseURL.appendingPathComponent("redacao.txt"))
+        } else {
+            status = "parcial: OCR automatico por Apple Vision; revisar transcricao antes de corrigir."
+            try write(text, to: caseURL.appendingPathComponent("redacao.txt"))
+        }
+
+        try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
+
+        return OCRResult(
+            caseID: caseID,
+            characterCount: text.count,
+            lineCount: lines.count,
+            status: status
+        )
+    }
+
+    private static func recognizeText(in imageURL: URL) throws -> String {
+        guard let image = NSImage(contentsOf: imageURL) else {
+            throw ImportError.cannotReadImage(imageURL)
+        }
+        var rect = CGRect(origin: .zero, size: image.size)
+        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
+            throw ImportError.cannotCreateCGImage(imageURL)
+        }
+
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["pt-BR", "en-US"]
+        request.usesLanguageCorrection = true
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try handler.perform([request])
+
+        let observations = (request.results ?? []).sorted { lhs, rhs in
+            let verticalDelta = abs(lhs.boundingBox.minY - rhs.boundingBox.minY)
+            if verticalDelta > 0.01 {
+                return lhs.boundingBox.minY > rhs.boundingBox.minY
+            }
+            return lhs.boundingBox.minX < rhs.boundingBox.minX
+        }
+
+        return observations
+            .compactMap { $0.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
     private static func write(_ text: String, to url: URL) throws {
         try text.write(to: url, atomically: true, encoding: .utf8)
     }
@@ -587,6 +769,7 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
         let essayText = readText(url.appendingPathComponent("redacao.txt"))
         let preview = essayText.isEmpty ? "Sem transcrição encontrada." : essayText
         let exportURL = exportsURL.appendingPathComponent("\(caseID).xlsx")
+        let canRunOCR = hasCompatibleOriginalImage(in: url)
 
         return EssayCase(
             id: directoryName,
@@ -600,7 +783,8 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
             entryURL: url,
             exportURL: exportURL,
             hasExport: FileManager.default.fileExists(atPath: exportURL.path),
-            isReadyForCorrection: !essayText.isEmpty
+            isReadyForCorrection: !essayText.isEmpty,
+            canRunOCR: canRunOCR
         )
     }
     .sorted { $0.caseID < $1.caseID }
@@ -632,6 +816,19 @@ private func loadPrompts(vaultURL: URL) -> [BrainPrompt] {
 private func readText(_ url: URL) -> String {
     (try? String(contentsOf: url, encoding: .utf8))?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+}
+
+private func hasCompatibleOriginalImage(in caseURL: URL) -> Bool {
+    let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "tif", "tiff"]
+    let files = (try? FileManager.default.contentsOfDirectory(
+        at: caseURL,
+        includingPropertiesForKeys: [.isRegularFileKey],
+        options: [.skipsHiddenFiles]
+    )) ?? []
+    return files.contains { url in
+        url.lastPathComponent.lowercased().hasPrefix("original.")
+            && imageExtensions.contains(url.pathExtension.lowercased())
+    }
 }
 
 struct ContentView: View {
@@ -768,6 +965,12 @@ struct ContentView: View {
             VStack(alignment: .trailing, spacing: 8) {
                 apiKeyPanel
                 HStack {
+                    if !item.isReadyForCorrection {
+                        Button("Rodar OCR") {
+                            model.runOCRForSelectedCase()
+                        }
+                        .disabled(model.isRunning || !item.canRunOCR)
+                    }
                     Button("Dry-run") {
                         model.runSelectedCase(dryRun: true)
                     }

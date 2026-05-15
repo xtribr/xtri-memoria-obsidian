@@ -39,7 +39,9 @@ Este app é assinado ad-hoc para uso local. Para distribuição externa, ainda s
 
 Use `Importar Pasta` quando houver um lote com um arquivo por aluno. Use `Importar Arquivo` para casos avulsos ou seleção manual de poucos arquivos. Os botões também aparecem na barra lateral como `Pasta` e `Arquivos`.
 
-Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Arquivos `.pdf`, `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` são copiados como `original.ext`, criam o caso no vault e ficam marcados como `aguardando_ocr` até existir uma transcrição em `redacao.txt`.
+Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` rodam OCR local com Apple Vision; quando há texto extraído, o caso fica marcado como `parcial` para revisão antes da correção. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição em `redacao.txt`.
+
+Casos de imagem importados antes do OCR automático podem ser processados pelo botão `Rodar OCR`, exibido no painel do caso quando há `original.ext` compatível.
 
 Para cada arquivo aceito, o app cria:
 

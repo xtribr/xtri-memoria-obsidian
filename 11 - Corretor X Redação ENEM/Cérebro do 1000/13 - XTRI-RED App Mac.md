@@ -27,7 +27,9 @@ Fluxo recomendado para 500 redações:
 3. Informar o tema oficial comum do lote.
 4. O XTRI-RED cria automaticamente `entradas/caso-*`.
 
-Arquivos `.txt` entram como transcrição pronta para correção. Arquivos `.pdf`, `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` são copiados para o caso como `original.ext`, mas ficam com `status-ocr.txt = aguardando_ocr` e não são liberados para correção até existir texto em `redacao.txt`.
+Arquivos `.txt` entram como transcrição pronta para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` rodam OCR local com Apple Vision; quando há texto extraído, o caso fica com `status-ocr.txt = parcial` porque a transcrição de manuscrito precisa de revisão. PDFs são copiados para o caso como `original.pdf`, mas continuam com `status-ocr.txt = aguardando_ocr` até existir texto em `redacao.txt`.
+
+Casos de imagem importados antes desta atualização podem ser processados pelo botão `Rodar OCR`, exibido quando o caso tem `original.ext` compatível.
 
 Estrutura criada por arquivo:
 

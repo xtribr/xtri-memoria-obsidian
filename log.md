@@ -186,3 +186,18 @@ Comportamento registrado:
 - `Importar Arquivo` aceita um ou mais arquivos selecionados manualmente.
 - Arquivos `.txt` viram casos prontos para correção, com `redacao.txt` preenchido.
 - PDFs e imagens são preservados como `original.ext`, marcados como `aguardando_ocr` e bloqueados para correção até haver transcrição.
+
+## [2026-05-15] fix | OCR local para imagens no XTRI-RED
+
+Adicionado OCR local com Apple Vision para imagens importadas pelo XTRI-RED.
+
+Nota principal:
+
+- [[13 - XTRI-RED App Mac]]
+
+Comportamento registrado:
+
+- Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` passam por OCR no momento da importação.
+- Casos antigos com imagem original compatível podem usar o botão `Rodar OCR`.
+- A transcrição de manuscrito recebe `status-ocr.txt = parcial` para indicar necessidade de revisão antes de correção pedagógica.
+- PDFs permanecem como OCR pendente nesta etapa.
