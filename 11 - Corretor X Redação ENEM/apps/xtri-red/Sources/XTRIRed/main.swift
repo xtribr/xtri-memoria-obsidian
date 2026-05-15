@@ -11,7 +11,7 @@ struct XTRIRedApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 1120, minHeight: 720)
+                .frame(minWidth: 980, minHeight: 680)
         }
         .windowStyle(.titleBar)
     }
@@ -31,13 +31,6 @@ struct EssayCase: Identifiable, Hashable, Sendable {
     let hasExport: Bool
     let isReadyForCorrection: Bool
     let canRunOCR: Bool
-}
-
-struct BrainPrompt: Identifiable, Hashable {
-    let id: String
-    let title: String
-    let path: String
-    let preview: String
 }
 
 struct ProcessResult: Sendable {
@@ -172,7 +165,6 @@ enum KeychainStore {
 final class AppModel: ObservableObject {
     @Published var vaultPath = defaultVaultPath
     @Published var cases: [EssayCase] = []
-    @Published var prompts: [BrainPrompt] = []
     @Published var selectedCaseID: EssayCase.ID?
     @Published var apiKey = ""
     @Published var keychainStatus = "Chave não salva."
@@ -202,13 +194,12 @@ final class AppModel: ObservableObject {
     func refresh() {
         let loadedCases = loadCases(vaultURL: vaultURL)
         cases = loadedCases
-        prompts = loadPrompts(vaultURL: vaultURL)
         if let selectedCaseID, loadedCases.contains(where: { $0.id == selectedCaseID }) {
             self.selectedCaseID = selectedCaseID
         } else {
             selectedCaseID = loadedCases.first?.id
         }
-        log = "Vault carregado: \(loadedCases.count) caso(s), \(prompts.count) prompt(s)."
+        log = "Vault carregado: \(loadedCases.count) caso(s)."
     }
 
     func chooseVault() {
@@ -790,29 +781,6 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
     .sorted { $0.caseID < $1.caseID }
 }
 
-private func loadPrompts(vaultURL: URL) -> [BrainPrompt] {
-    let promptsURL = vaultURL.appendingPathComponent("app-config/prompts")
-    let files = (try? FileManager.default.contentsOfDirectory(
-        at: promptsURL,
-        includingPropertiesForKeys: nil,
-        options: [.skipsHiddenFiles]
-    )) ?? []
-
-    return files
-        .filter { $0.pathExtension.lowercased() == "md" }
-        .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        .map { url in
-            let text = readText(url)
-            let firstLine = text.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? url.deletingPathExtension().lastPathComponent
-            return BrainPrompt(
-                id: url.lastPathComponent,
-                title: firstLine.replacingOccurrences(of: "# ", with: ""),
-                path: url.path,
-                preview: text
-            )
-        }
-}
-
 private func readText(_ url: URL) -> String {
     (try? String(contentsOf: url, encoding: .utf8))?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -911,18 +879,6 @@ struct ContentView: View {
                         .tag(item.id)
                     }
                 }
-
-                Section("Cérebro") {
-                    ForEach(model.prompts) { prompt in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(prompt.id.replacingOccurrences(of: ".md", with: "").uppercased())
-                                .font(.headline)
-                            Text(prompt.title)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
             }
         }
         .navigationTitle("XTRI-RED")
@@ -934,12 +890,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 14) {
                 header(for: item)
                 Divider()
-                HSplitView {
-                    casePanel(item)
-                        .frame(minWidth: 420)
-                    brainPanel
-                        .frame(minWidth: 360)
-                }
+                casePanel(item)
                 Divider()
                 logPanel
             }
@@ -1091,35 +1042,6 @@ struct ContentView: View {
             return .blue
         }
         return .orange
-    }
-
-    private var brainPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Cérebro Obsidian")
-                .font(.headline)
-            Text("Prompts e rubricas carregados de app-config/prompts.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(model.prompts) { prompt in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(prompt.title)
-                                .font(.subheadline.weight(.semibold))
-                            Text(prompt.preview)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(8)
-                                .textSelection(.enabled)
-                        }
-                        .padding(10)
-                        .background(Color(nsColor: .controlBackgroundColor))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                }
-            }
-        }
     }
 
     private var logPanel: some View {

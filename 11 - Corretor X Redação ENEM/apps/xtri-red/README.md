@@ -35,6 +35,8 @@ Este app é assinado ad-hoc para uso local. Para distribuição externa, ainda s
 - Rodar dry-run ou correção real chamando `scripts/run_caso_sabia.sh`.
 - Abrir o Excel gerado.
 
+Observação de interface: os prompts e rubricas continuam no vault e são usados pelo motor, mas não aparecem na tela principal. A interface operacional mostra apenas vault, importação, casos, redação, ações e execução.
+
 ## Importação
 
 Use `Importar Pasta` quando houver um lote com um arquivo por aluno. Use `Importar Arquivo` para casos avulsos ou seleção manual de poucos arquivos. Os botões também aparecem na barra lateral como `Pasta` e `Arquivos`.

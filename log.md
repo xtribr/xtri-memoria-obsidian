@@ -201,3 +201,16 @@ Comportamento registrado:
 - Casos antigos com imagem original compatível podem usar o botão `Rodar OCR`.
 - A transcrição de manuscrito recebe `status-ocr.txt = parcial` para indicar necessidade de revisão antes de correção pedagógica.
 - PDFs permanecem como OCR pendente nesta etapa.
+
+## [2026-05-15] change | Interface operacional limpa no XTRI-RED
+
+Removida a exposição de prompts/rubricas da tela principal do XTRI-RED.
+
+Nota principal:
+
+- [[13 - XTRI-RED App Mac]]
+
+Decisão:
+
+- O Obsidian continua sendo o cérebro metodológico.
+- A interface do app passa a priorizar operação: importar, selecionar caso, revisar transcrição, rodar OCR/correção e abrir Excel.

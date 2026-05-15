@@ -16,6 +16,18 @@ Operar correções em lote no macOS usando o vault do Obsidian como cérebro met
 - Executar dry-run e correção real via `scripts/run_caso_sabia.sh`.
 - Abrir o Excel gerado em `Cérebro do 1000/casos/exports`.
 
+## Interface Operacional
+
+Status em 2026-05-15: a tela principal foi simplificada para operação de correções. Prompts e rubricas não aparecem mais na barra lateral nem no painel direito; continuam no vault como cérebro metodológico e são consumidos pelo motor de correção.
+
+A tela principal fica organizada em:
+
+- vault e importação;
+- lista de casos;
+- dados da redação selecionada;
+- ações de OCR, dry-run, correção e abertura do Excel;
+- log de execução.
+
 ## Upload Lógico
 
 Status em 2026-05-15: o app possui importação local para lote e arquivos avulsos.
