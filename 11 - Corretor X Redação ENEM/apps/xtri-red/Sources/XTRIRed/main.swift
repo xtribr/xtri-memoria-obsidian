@@ -133,6 +133,7 @@ final class AppModel: ObservableObject {
     @Published var apiKey = ""
     @Published var keychainStatus = "Chave não salva."
     @Published var hasSavedAPIKey = false
+    @Published var isEditingAPIKey = false
     @Published var log = "Pronto."
     @Published var isRunning = false
 
@@ -190,6 +191,7 @@ final class AppModel: ObservableObject {
             try KeychainStore.saveAPIKey(trimmedKey)
             apiKey = trimmedKey
             hasSavedAPIKey = true
+            isEditingAPIKey = false
             keychainStatus = "Chave salva no Keychain."
             log = "SABIA_API_KEY salva no Keychain do macOS."
         } catch {
@@ -203,12 +205,14 @@ final class AppModel: ObservableObject {
             if let savedKey = try KeychainStore.readAPIKey(), !savedKey.isEmpty {
                 apiKey = savedKey
                 hasSavedAPIKey = true
+                isEditingAPIKey = false
                 keychainStatus = "Chave carregada do Keychain."
                 if !silent {
                     log = "SABIA_API_KEY carregada do Keychain."
                 }
             } else {
                 hasSavedAPIKey = false
+                isEditingAPIKey = true
                 keychainStatus = "Chave não salva."
                 if !silent {
                     log = "Nenhuma chave encontrada no Keychain."
@@ -216,6 +220,7 @@ final class AppModel: ObservableObject {
             }
         } catch {
             hasSavedAPIKey = false
+            isEditingAPIKey = true
             keychainStatus = "Falha ao carregar chave."
             if !silent {
                 log = error.localizedDescription
@@ -228,6 +233,7 @@ final class AppModel: ObservableObject {
             try KeychainStore.deleteAPIKey()
             apiKey = ""
             hasSavedAPIKey = false
+            isEditingAPIKey = true
             keychainStatus = "Chave apagada do Keychain."
             log = "SABIA_API_KEY apagada do Keychain."
         } catch {
@@ -489,24 +495,7 @@ struct ContentView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 8) {
-                SecureField("SABIA_API_KEY", text: $model.apiKey)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 280)
-                HStack(spacing: 8) {
-                    Text(model.keychainStatus)
-                        .font(.caption)
-                        .foregroundStyle(model.hasSavedAPIKey ? .green : .secondary)
-                    Button("Salvar") {
-                        model.saveAPIKeyToKeychain()
-                    }
-                    Button("Carregar") {
-                        model.loadAPIKeyFromKeychain()
-                    }
-                    Button("Apagar") {
-                        model.deleteAPIKeyFromKeychain()
-                    }
-                    .disabled(!model.hasSavedAPIKey)
-                }
+                apiKeyPanel
                 HStack {
                     Button("Dry-run") {
                         model.runSelectedCase(dryRun: true)
@@ -520,6 +509,67 @@ struct ContentView: View {
                     }
                     .disabled(!item.hasExport)
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var apiKeyPanel: some View {
+        if model.hasSavedAPIKey && !model.isEditingAPIKey {
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.title3)
+                        .foregroundStyle(.green)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Sabiá conectado")
+                            .font(.headline)
+                        Text("Chave salva no Keychain")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .frame(width: 320, alignment: .trailing)
+                .background(Color.green.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                HStack(spacing: 8) {
+                    Button("Trocar chave") {
+                        model.isEditingAPIKey = true
+                    }
+                    Button("Apagar") {
+                        model.deleteAPIKeyFromKeychain()
+                    }
+                }
+
+                Text(model.keychainStatus)
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
+        } else {
+            VStack(alignment: .trailing, spacing: 6) {
+                SecureField("SABIA_API_KEY", text: $model.apiKey)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 320)
+
+                HStack(spacing: 8) {
+                    Button("Salvar") {
+                        model.saveAPIKeyToKeychain()
+                    }
+                    Button("Carregar") {
+                        model.loadAPIKeyFromKeychain()
+                    }
+                    Button("Apagar") {
+                        model.deleteAPIKeyFromKeychain()
+                    }
+                    .disabled(!model.hasSavedAPIKey)
+                }
+
+                Text(model.keychainStatus)
+                    .font(.caption)
+                    .foregroundStyle(model.hasSavedAPIKey ? .green : .secondary)
             }
         }
     }

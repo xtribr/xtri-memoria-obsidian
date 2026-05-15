@@ -123,6 +123,16 @@ Cada chamada deve retornar JSON com:
 - `sugestao_de_melhoria`;
 - `nivel_confianca`.
 
+O prompt-base usado pelo script inclui gates de anulação antes da nota, regra de tangenciamento para C3 e C5, ordem de autoridade metodológica e instrução para escolher a faixa inferior em caso de dúvida entre duas notas.
+
+Campos opcionais por caso:
+
+- `status-tema.txt`: `verificado`, `inferido` ou `ausente`;
+- `status-anulacao.txt`: `nenhuma` ou uma condição de anulação;
+- `tangenciamento-c2.txt`: `true`, `1` ou `sim` para limitar C3 e C5 a 40 pontos.
+
+Se `status-tema.txt` não existir, o script infere o status do tema a partir de `tema.txt`.
+
 Depois, o script preenche o [Template - Entrega Excel Corretor X.xlsx](templates/Template%20-%20Entrega%20Excel%20Corretor%20X.xlsx).
 
 ## Próximo controle

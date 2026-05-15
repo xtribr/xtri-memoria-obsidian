@@ -37,4 +37,6 @@ Este app é assinado ad-hoc para uso local. Para distribuição externa, ainda s
 
 A chave `SABIA_API_KEY` não deve ser hardcoded nem salva no Git. O app permite salvar a chave no Keychain do macOS pelo botão `Salvar`; nas próximas aberturas, ela é carregada automaticamente. Também é possível usar a variável de ambiente quando o app é iniciado pelo terminal.
 
+Quando há chave salva, o XTRI-RED mostra `Sabiá conectado` e esconde o campo da chave. Use `Trocar chave` apenas quando precisar substituir o segredo salvo.
+
 Os runners de terminal também leem a mesma chave do Keychain. Depois de salvar uma vez no XTRI-RED, comandos como `scripts/run_caso_sabia.sh` funcionam sem exportar `SABIA_API_KEY`.

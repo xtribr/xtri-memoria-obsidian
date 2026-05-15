@@ -20,6 +20,7 @@ import re
 import shutil
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -62,6 +63,65 @@ RUBRICAS = {
     ),
 }
 
+PROMPT_BASE = """Você é o Corretor X da XTRI EdTECH, especialista em redação ENEM e Teoria de Resposta ao Item.
+
+TAREFA
+Avalie EXCLUSIVAMENTE a {competencia} da redação abaixo, atribuindo uma das seis notas oficiais: 0, 40, 80, 120, 160 ou 200.
+
+AUTORIDADE METODOLÓGICA (ordem de precedência)
+1. Cartilha do Participante ENEM 2025 (INEP/MEC) — referência principal e final
+2. Matriz de Referência para a Redação do ENEM
+3. Redações nota 1000 de edições anteriores — referência de padrão, NUNCA regra absoluta
+
+GATES DE ANULAÇÃO (verificar ANTES de avaliar)
+Se o campo "status_anulacao" abaixo indicar qualquer condição abaixo, atribua nota 0 a esta competência e explique no campo "comentario":
+- fuga_total_tema
+- nao_atendimento_tipo_textual
+- texto_insuficiente (≤7 linhas manuscritas)
+- parte_deliberadamente_desconectada
+- texto_em_lingua_estrangeira
+- texto_ilegivel
+- impropérios_ou_anulacao_proposital
+
+TANGENCIAMENTO (aplicável a C3 e C5)
+Se "tangenciamento_c2" = true, a nota desta competência não pode exceder 40 pontos, conforme Matriz de Referência ENEM.
+
+REGRAS OBRIGATÓRIAS
+- Avalie SOMENTE a competência indicada. Ignore problemas que pertençam a outras competências.
+- Cite evidências REAIS do texto do aluno (trechos curtos, entre aspas).
+- NUNCA invente tema, erro, repertório, autor, dado estatístico ou citação.
+- Se faltar informação para avaliação segura, reduza "nivel_confianca" para "media" ou "baixa".
+- Não reescreva o texto do aluno nem produza redação modelo.
+- Rigor pedagógico, sem condescendência e sem agressividade.
+- Para 200 pontos, o texto precisa atender a TODOS os critérios da faixa, não apenas alguns.
+- Em caso de dúvida entre duas faixas, escolha a INFERIOR e justifique.
+
+CONTEXTO DA AVALIAÇÃO
+- Tema oficial: {tema}
+- Status do tema: {status_tema}  # verificado | inferido | ausente
+- Status OCR/transcrição: {status_ocr}
+- Status de anulação: {status_anulacao}
+- Tangenciamento detectado em C2: {tangenciamento_c2}
+
+RUBRICA DESTA COMPETÊNCIA
+{rubrica}
+
+REDAÇÃO DO ALUNO
+{redacao}
+
+FORMATO DE SAÍDA (JSON válido, sem markdown, sem texto fora do JSON)
+{formato_json}
+"""
+
+FORMATO_JSON = """{{
+  "competencia": "{competencia}",
+  "nota_corretor_x": 0,
+  "comentario_do_erro": "comentário pedagógico objetivo",
+  "evidencia_no_texto": "trecho curto do aluno entre aspas, ou descrição fiel se o trecho estiver ilegível",
+  "sugestao_de_melhoria": "orientação prática sem substituir a autoria do aluno",
+  "nivel_confianca": "alta|media|baixa"
+}}"""
+
 
 @dataclass
 class AvaliacaoCompetencia:
@@ -100,47 +160,51 @@ def extract_json(content: str) -> dict[str, Any]:
     return json.loads(content)
 
 
-def build_prompt(competencia: str, tema: str, redacao: str, status_ocr: str, rubrica: str) -> str:
-    return f"""
-Você é o Corretor X da XTRI EdTECH, especializado em redação do ENEM.
+def strip_accents(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    return "".join(char for char in normalized if not unicodedata.combining(char))
 
-Avalie SOMENTE a {competencia}. Use exclusivamente as faixas oficiais:
-0, 40, 80, 120, 160 ou 200 pontos.
 
-Autoridade metodológica:
-- A Cartilha do Participante / Manual Oficial ENEM 2025 é a referência principal.
-- Redações nota 1000 servem como referência de padrão, não como regra absoluta.
+def infer_status_tema(tema: str) -> str:
+    normalized = strip_accents(tema).lower()
+    if any(marker in normalized for marker in ("nao informado", "ausente", "sem tema oficial")):
+        return "ausente"
+    if any(marker in normalized for marker in ("inferido", "inferencia", "aparenta tratar")):
+        return "inferido"
+    return "verificado"
 
-Rubrica da competência:
-{rubrica}
 
-Regras obrigatórias:
-- Não invente tema, texto motivador, erro, repertório ou dado.
-- Cite evidência que exista no texto do aluno.
-- Se faltar informação para avaliar com segurança, reduza o nível de confiança.
-- Não escreva uma redação pronta para o aluno.
-- Seja rigoroso e pedagógico.
-- Responda apenas em JSON válido, sem Markdown.
+def normalize_confidence(value: str) -> str:
+    normalized = strip_accents(value).strip().lower()
+    confidence_map = {
+        "alta": "Alta",
+        "media": "Média",
+        "baixa": "Baixa",
+    }
+    return confidence_map.get(normalized, "Baixa")
 
-Formato JSON obrigatório:
-{{
-  "competencia": "{competencia}",
-  "nota_corretor_x": 0,
-  "comentario_do_erro": "comentário pedagógico objetivo",
-  "evidencia_no_texto": "trecho curto ou descrição fiel do texto",
-  "sugestao_de_melhoria": "orientação prática sem substituir autoria",
-  "nivel_confianca": "Alta|Média|Baixa"
-}}
 
-Tema:
-{tema}
-
-Status OCR/transcrição:
-{status_ocr}
-
-Redação do aluno:
-{redacao}
-""".strip()
+def build_prompt(
+    competencia: str,
+    tema: str,
+    redacao: str,
+    status_ocr: str,
+    rubrica: str,
+    status_tema: str,
+    status_anulacao: str,
+    tangenciamento_c2: str,
+) -> str:
+    return PROMPT_BASE.format(
+        competencia=competencia,
+        tema=tema,
+        status_tema=status_tema,
+        status_ocr=status_ocr,
+        status_anulacao=status_anulacao,
+        tangenciamento_c2=tangenciamento_c2,
+        rubrica=rubrica,
+        redacao=redacao,
+        formato_json=FORMATO_JSON.format(competencia=competencia),
+    ).strip()
 
 
 def call_sabia(api_key: str, model: str, prompt: str, timeout: int, retries: int) -> str:
@@ -178,13 +242,11 @@ def normalize_avaliacao(raw: dict[str, Any], competencia: str) -> AvaliacaoCompe
     nota = int(raw.get("nota_corretor_x"))
     if nota not in VALID_SCORES:
         raise ValueError(f"Nota inválida para {competencia}: {nota}")
-    nivel = str(raw.get("nivel_confianca", "")).strip()
-    if nivel not in {"Alta", "Média", "Baixa"}:
-        nivel = "Baixa"
+    nivel = normalize_confidence(str(raw.get("nivel_confianca", "")))
     return AvaliacaoCompetencia(
         competencia=competencia,
         nota_corretor_x=nota,
-        comentario_do_erro=str(raw.get("comentario_do_erro", "")).strip(),
+        comentario_do_erro=str(raw.get("comentario_do_erro", raw.get("comentario", ""))).strip(),
         evidencia_no_texto=str(raw.get("evidencia_no_texto", "")).strip(),
         sugestao_de_melhoria=str(raw.get("sugestao_de_melhoria", "")).strip(),
         nivel_confianca=nivel,
@@ -226,6 +288,9 @@ def main() -> int:
     parser.add_argument("--case-id", default="CASO-001")
     parser.add_argument("--aluno-id", default="Aluno 001")
     parser.add_argument("--status-ocr", default="Não necessário")
+    parser.add_argument("--status-tema", choices=["verificado", "inferido", "ausente"])
+    parser.add_argument("--status-anulacao", default="nenhuma")
+    parser.add_argument("--tangenciamento-c2", action="store_true")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--timeout", default=90, type=int)
     parser.add_argument("--retries", default=1, type=int)
@@ -250,10 +315,15 @@ def main() -> int:
 
     tema = read_text(args.tema_file)
     redacao = read_text(args.redacao_file)
+    status_tema = args.status_tema or infer_status_tema(tema)
+    tangenciamento_c2 = "true" if args.tangenciamento_c2 else "false"
 
     if args.dry_run:
         print("Entradas válidas.")
         print(f"Tema: {len(tema)} caracteres")
+        print(f"Status do tema: {status_tema}")
+        print(f"Status de anulação: {args.status_anulacao}")
+        print(f"Tangenciamento C2: {tangenciamento_c2}")
         print(f"Redação: {len(redacao)} caracteres")
         print("Dry-run: nenhuma chamada ao Sabiá foi feita.")
         return 0
@@ -266,7 +336,16 @@ def main() -> int:
     avaliacoes: list[AvaliacaoCompetencia] = []
     for competencia in COMPETENCIAS:
         rubrica = load_competencia_prompt(competencia, args.brain_prompts_dir)
-        prompt = build_prompt(competencia, tema, redacao, args.status_ocr, rubrica)
+        prompt = build_prompt(
+            competencia,
+            tema,
+            redacao,
+            args.status_ocr,
+            rubrica,
+            status_tema,
+            args.status_anulacao,
+            tangenciamento_c2,
+        )
         content = call_sabia(api_key, args.model, prompt, args.timeout, args.retries)
         raw = extract_json(content)
         avaliacoes.append(normalize_avaliacao(raw, competencia))

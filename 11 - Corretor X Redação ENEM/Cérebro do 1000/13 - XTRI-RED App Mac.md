@@ -53,6 +53,8 @@ A chave `SABIA_API_KEY` não deve ser hardcoded nem salva no Git.
 
 O app salva a chave no Keychain do macOS quando o usuário clica em `Salvar`. Em novas aberturas, o XTRI-RED carrega essa chave automaticamente e a passa ao runner apenas em variável de ambiente do processo.
 
+Quando a chave está salva, a interface mostra `Sabiá conectado` e oculta o campo da chave. O campo volta a aparecer apenas ao clicar em `Trocar chave` ou após apagar o registro.
+
 Também é possível apagar a chave pelo botão `Apagar` na interface.
 
 Os runners de terminal usam o mesmo registro do Keychain:

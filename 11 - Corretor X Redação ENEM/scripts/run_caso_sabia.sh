@@ -47,6 +47,9 @@ INPUT_DIR="entradas/${CASE_DIR}"
 TEMA_FILE="${INPUT_DIR}/tema.txt"
 REDACAO_FILE="${INPUT_DIR}/redacao.txt"
 STATUS_OCR_FILE="${INPUT_DIR}/status-ocr.txt"
+STATUS_TEMA_FILE="${INPUT_DIR}/status-tema.txt"
+STATUS_ANULACAO_FILE="${INPUT_DIR}/status-anulacao.txt"
+TANGENCIAMENTO_C2_FILE="${INPUT_DIR}/tangenciamento-c2.txt"
 OUT_XLSX="Cérebro do 1000/casos/exports/${CASE_ID}.xlsx"
 
 for required_file in "${TEMA_FILE}" "${REDACAO_FILE}" "${STATUS_OCR_FILE}"; do
@@ -58,21 +61,38 @@ done
 
 STATUS_OCR="$(cat "${STATUS_OCR_FILE}")"
 
-if [[ "${DRY_RUN}" == "1" ]]; then
-  "${PYTHON_BIN}" scripts/corrigir_com_sabia.py \
-    --tema-file "${TEMA_FILE}" \
-    --redacao-file "${REDACAO_FILE}" \
-    --case-id "${CASE_ID}" \
-    --aluno-id "${ALUNO_ID}" \
-    --status-ocr "${STATUS_OCR}" \
-    --out-xlsx "${OUT_XLSX}" \
-    --dry-run
-else
-  "${PYTHON_BIN}" scripts/corrigir_com_sabia.py \
-    --tema-file "${TEMA_FILE}" \
-    --redacao-file "${REDACAO_FILE}" \
-    --case-id "${CASE_ID}" \
-    --aluno-id "${ALUNO_ID}" \
-    --status-ocr "${STATUS_OCR}" \
-    --out-xlsx "${OUT_XLSX}"
+set -- \
+  --tema-file "${TEMA_FILE}" \
+  --redacao-file "${REDACAO_FILE}" \
+  --case-id "${CASE_ID}" \
+  --aluno-id "${ALUNO_ID}" \
+  --status-ocr "${STATUS_OCR}"
+
+if [[ -f "${STATUS_TEMA_FILE}" ]]; then
+  STATUS_TEMA="$(tr -d '\r\n' < "${STATUS_TEMA_FILE}")"
+  if [[ -n "${STATUS_TEMA}" ]]; then
+    set -- "$@" --status-tema "${STATUS_TEMA}"
+  fi
 fi
+
+if [[ -f "${STATUS_ANULACAO_FILE}" ]]; then
+  STATUS_ANULACAO="$(tr -d '\r\n' < "${STATUS_ANULACAO_FILE}")"
+  if [[ -n "${STATUS_ANULACAO}" ]]; then
+    set -- "$@" --status-anulacao "${STATUS_ANULACAO}"
+  fi
+fi
+
+if [[ -f "${TANGENCIAMENTO_C2_FILE}" ]]; then
+  TANGENCIAMENTO_C2="$(tr '[:upper:]' '[:lower:]' < "${TANGENCIAMENTO_C2_FILE}" | tr -d '[:space:]')"
+  if [[ "${TANGENCIAMENTO_C2}" == "true" || "${TANGENCIAMENTO_C2}" == "1" || "${TANGENCIAMENTO_C2}" == "sim" ]]; then
+    set -- "$@" --tangenciamento-c2
+  fi
+fi
+
+set -- "$@" --out-xlsx "${OUT_XLSX}"
+
+if [[ "${DRY_RUN}" == "1" ]]; then
+  set -- "$@" --dry-run
+fi
+
+"${PYTHON_BIN}" scripts/corrigir_com_sabia.py "$@"
