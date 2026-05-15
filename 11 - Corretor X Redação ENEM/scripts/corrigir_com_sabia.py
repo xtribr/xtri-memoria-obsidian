@@ -122,6 +122,87 @@ FORMATO_JSON = """{{
   "nivel_confianca": "alta|media|baixa"
 }}"""
 
+FORMATO_JSON_C1 = """{{
+  "competencia": "C1",
+  "nota": 0,
+  "comentario": "análise pedagógica objetiva (3-5 frases)",
+  "desvios_encontrados": [
+    {{"tipo": "ortografia|acentuacao|pontuacao|concordancia|regencia|crase|paralelismo|registro|vocabulario|sintaxe", "trecho": "citação exata", "gravidade": "leve|media|grave"}}
+  ],
+  "total_desvios": 0,
+  "reincidencia": false,
+  "tipo_reincidente": null,
+  "sugestao": "orientação prática focada no desvio mais impactante",
+  "nivel_confianca": "alta|media|baixa"
+}}"""
+
+FORMATO_JSON_C2 = """{{
+  "competencia": "C2",
+  "nota": 0,
+  "comentario": "análise pedagógica objetiva (3-5 frases)",
+  "abordagem_tema": "completa|tangenciamento|fuga_total",
+  "tangenciamento_c2": false,
+  "alerta_tema": null,
+  "tipo_textual_adequado": true,
+  "repertorios_identificados": [
+    {{"referencia": "ex: Djamila Ribeiro - Pequeno Manual Antirracista", "classificacao": "produtivo|bolso|nao_legitimado", "justificativa": "breve"}}
+  ],
+  "sugestao": "orientação prática",
+  "nivel_confianca": "alta|media|baixa"
+}}"""
+
+FORMATO_JSON_C3 = """{{
+  "competencia": "C3",
+  "nota": 0,
+  "comentario": "análise pedagógica objetiva (3-5 frases)",
+  "projeto_de_texto": "consistente|com_indicios|previsivel|ausente",
+  "tese_identificada": "citação curta da tese, se houver",
+  "autoria": "configura|indicios|ausente",
+  "teto_por_tangenciamento_aplicado": false,
+  "sugestao": "orientação prática",
+  "nivel_confianca": "alta|media|baixa"
+}}"""
+
+FORMATO_JSON_C4 = """{{
+  "competencia": "C4",
+  "nota": 0,
+  "comentario": "análise pedagógica objetiva (3-5 frases)",
+  "articulacao_interparagrafo": "plena|consistente|mediana|insuficiente|precaria|ausente",
+  "diversidade_coesiva": "alta|media|baixa",
+  "inadequacoes_identificadas": [
+    {{"tipo": "conector_sem_relacao|empilhamento|repeticao_inadequada|paragrafo_isolado", "trecho": "citação"}}
+  ],
+  "sugestao": "orientação prática",
+  "nivel_confianca": "alta|media|baixa"
+}}"""
+
+FORMATO_JSON_C5 = """{{
+  "competencia": "C5",
+  "nota": 0,
+  "comentario": "análise pedagógica objetiva (3-5 frases)",
+  "elementos_identificados": {{
+    "agente": "citação ou null",
+    "acao": "citação ou null",
+    "meio": "citação ou null",
+    "efeito": "citação ou null",
+    "detalhamento": "citação ou null"
+  }},
+  "total_elementos": 0,
+  "articulacao_com_texto": true,
+  "respeita_direitos_humanos": true,
+  "teto_por_tangenciamento_aplicado": false,
+  "sugestao": "orientação prática",
+  "nivel_confianca": "alta|media|baixa"
+}}"""
+
+FORMATO_JSON_POR_COMPETENCIA = {
+    "C1": FORMATO_JSON_C1,
+    "C2": FORMATO_JSON_C2,
+    "C3": FORMATO_JSON_C3,
+    "C4": FORMATO_JSON_C4,
+    "C5": FORMATO_JSON_C5,
+}
+
 
 @dataclass
 class AvaliacaoCompetencia:
@@ -184,6 +265,143 @@ def normalize_confidence(value: str) -> str:
     return confidence_map.get(normalized, "Baixa")
 
 
+def formato_json_for(competencia: str) -> str:
+    return FORMATO_JSON_POR_COMPETENCIA.get(competencia, FORMATO_JSON).format(competencia=competencia)
+
+
+def format_desvios_encontrados(raw: dict[str, Any]) -> str:
+    desvios = raw.get("desvios_encontrados")
+    if not isinstance(desvios, list):
+        return ""
+
+    evidencias: list[str] = []
+    for desvio in desvios[:5]:
+        if not isinstance(desvio, dict):
+            continue
+        tipo = str(desvio.get("tipo", "")).strip()
+        trecho = str(desvio.get("trecho", "")).strip()
+        gravidade = str(desvio.get("gravidade", "")).strip()
+        partes = []
+        if tipo:
+            partes.append(tipo)
+        if gravidade:
+            partes.append(gravidade)
+        label = "/".join(partes)
+        if trecho and label:
+            evidencias.append(f"{label}: {trecho}")
+        elif trecho:
+            evidencias.append(trecho)
+        elif label:
+            evidencias.append(label)
+
+    return " | ".join(evidencias)
+
+
+def format_repertorios_identificados(raw: dict[str, Any]) -> str:
+    repertorios = raw.get("repertorios_identificados")
+    if not isinstance(repertorios, list):
+        return ""
+
+    evidencias: list[str] = []
+    for repertorio in repertorios[:5]:
+        if not isinstance(repertorio, dict):
+            continue
+        referencia = str(repertorio.get("referencia", "")).strip()
+        classificacao = str(repertorio.get("classificacao", "")).strip()
+        justificativa = str(repertorio.get("justificativa", "")).strip()
+        partes = []
+        if referencia:
+            partes.append(referencia)
+        if classificacao:
+            partes.append(f"classificação: {classificacao}")
+        if justificativa:
+            partes.append(justificativa)
+        if partes:
+            evidencias.append(" - ".join(partes))
+
+    return " | ".join(evidencias)
+
+
+def format_projeto_argumentacao(raw: dict[str, Any]) -> str:
+    campos = {
+        "projeto_de_texto": "Projeto",
+        "tese_identificada": "Tese",
+        "autoria": "Autoria",
+    }
+    evidencias = []
+    for campo, label in campos.items():
+        valor = raw.get(campo)
+        if valor is None:
+            continue
+        texto = str(valor).strip()
+        if texto:
+            evidencias.append(f"{label}: {texto}")
+
+    if raw.get("teto_por_tangenciamento_aplicado") is True:
+        evidencias.append("Teto por tangenciamento aplicado")
+
+    return " | ".join(evidencias)
+
+
+def format_coesao_articulacao(raw: dict[str, Any]) -> str:
+    evidencias = []
+    articulacao = str(raw.get("articulacao_interparagrafo", "")).strip()
+    diversidade = str(raw.get("diversidade_coesiva", "")).strip()
+    if articulacao:
+        evidencias.append(f"Articulação interparágrafo: {articulacao}")
+    if diversidade:
+        evidencias.append(f"Diversidade coesiva: {diversidade}")
+
+    inadequacoes = raw.get("inadequacoes_identificadas")
+    if isinstance(inadequacoes, list):
+        for inadequacao in inadequacoes[:5]:
+            if not isinstance(inadequacao, dict):
+                continue
+            tipo = str(inadequacao.get("tipo", "")).strip()
+            trecho = str(inadequacao.get("trecho", "")).strip()
+            if tipo and trecho:
+                evidencias.append(f"{tipo}: {trecho}")
+            elif tipo:
+                evidencias.append(tipo)
+            elif trecho:
+                evidencias.append(trecho)
+
+    return " | ".join(evidencias)
+
+
+def format_proposta_intervencao(raw: dict[str, Any]) -> str:
+    evidencias = []
+    elementos = raw.get("elementos_identificados")
+    if isinstance(elementos, dict):
+        labels = {
+            "agente": "Agente",
+            "acao": "Ação",
+            "meio": "Meio",
+            "efeito": "Efeito",
+            "detalhamento": "Detalhamento",
+        }
+        for campo, label in labels.items():
+            valor = elementos.get(campo)
+            if valor is None:
+                continue
+            texto = str(valor).strip()
+            if texto and texto.lower() != "null":
+                evidencias.append(f"{label}: {texto}")
+
+    total = raw.get("total_elementos")
+    if total is not None:
+        evidencias.append(f"Total de elementos: {total}")
+
+    if raw.get("articulacao_com_texto") is False:
+        evidencias.append("Sem articulação suficiente com o texto")
+    if raw.get("respeita_direitos_humanos") is False:
+        evidencias.append("Desrespeito aos direitos humanos")
+    if raw.get("teto_por_tangenciamento_aplicado") is True:
+        evidencias.append("Teto por tangenciamento aplicado")
+
+    return " | ".join(evidencias)
+
+
 def build_prompt(
     competencia: str,
     tema: str,
@@ -203,7 +421,7 @@ def build_prompt(
         tangenciamento_c2=tangenciamento_c2,
         rubrica=rubrica,
         redacao=redacao,
-        formato_json=FORMATO_JSON.format(competencia=competencia),
+        formato_json=formato_json_for(competencia),
     ).strip()
 
 
@@ -239,16 +457,24 @@ def call_sabia(api_key: str, model: str, prompt: str, timeout: int, retries: int
 
 
 def normalize_avaliacao(raw: dict[str, Any], competencia: str) -> AvaliacaoCompetencia:
-    nota = int(raw.get("nota_corretor_x"))
+    nota = int(raw.get("nota_corretor_x", raw.get("nota")))
     if nota not in VALID_SCORES:
         raise ValueError(f"Nota inválida para {competencia}: {nota}")
     nivel = normalize_confidence(str(raw.get("nivel_confianca", "")))
+    evidencia = (
+        str(raw.get("evidencia_no_texto", "")).strip()
+        or format_desvios_encontrados(raw)
+        or format_repertorios_identificados(raw)
+        or format_projeto_argumentacao(raw)
+        or format_coesao_articulacao(raw)
+        or format_proposta_intervencao(raw)
+    )
     return AvaliacaoCompetencia(
         competencia=competencia,
         nota_corretor_x=nota,
         comentario_do_erro=str(raw.get("comentario_do_erro", raw.get("comentario", ""))).strip(),
-        evidencia_no_texto=str(raw.get("evidencia_no_texto", "")).strip(),
-        sugestao_de_melhoria=str(raw.get("sugestao_de_melhoria", "")).strip(),
+        evidencia_no_texto=evidencia,
+        sugestao_de_melhoria=str(raw.get("sugestao_de_melhoria", raw.get("sugestao", ""))).strip(),
         nivel_confianca=nivel,
     )
 
@@ -316,14 +542,14 @@ def main() -> int:
     tema = read_text(args.tema_file)
     redacao = read_text(args.redacao_file)
     status_tema = args.status_tema or infer_status_tema(tema)
-    tangenciamento_c2 = "true" if args.tangenciamento_c2 else "false"
+    tangenciamento_c2_detectado = args.tangenciamento_c2
 
     if args.dry_run:
         print("Entradas válidas.")
         print(f"Tema: {len(tema)} caracteres")
         print(f"Status do tema: {status_tema}")
         print(f"Status de anulação: {args.status_anulacao}")
-        print(f"Tangenciamento C2: {tangenciamento_c2}")
+        print(f"Tangenciamento C2: {'true' if tangenciamento_c2_detectado else 'false'}")
         print(f"Redação: {len(redacao)} caracteres")
         print("Dry-run: nenhuma chamada ao Sabiá foi feita.")
         return 0
@@ -344,11 +570,15 @@ def main() -> int:
             rubrica,
             status_tema,
             args.status_anulacao,
-            tangenciamento_c2,
+            "true" if tangenciamento_c2_detectado else "false",
         )
         content = call_sabia(api_key, args.model, prompt, args.timeout, args.retries)
         raw = extract_json(content)
         avaliacoes.append(normalize_avaliacao(raw, competencia))
+        if competencia == "C2" and (
+            raw.get("tangenciamento_c2") is True or raw.get("abordagem_tema") == "tangenciamento"
+        ):
+            tangenciamento_c2_detectado = True
         print(f"{competencia}: {avaliacoes[-1].nota_corretor_x}/200 ({avaliacoes[-1].nivel_confianca})")
 
     fill_workbook(
