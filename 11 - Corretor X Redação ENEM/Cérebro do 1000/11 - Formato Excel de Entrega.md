@@ -145,6 +145,7 @@ Regras:
 - `etapa` usa `gate`, `c1`, `c2`, `c3`, `c4` ou `c5`;
 - `prompt_hash` é o SHA-256 dos primeiros 500 caracteres do prompt enviado;
 - `json_resposta_bruto` guarda o JSON completo extraído da resposta do Sabiá;
+- `validacao_pydantic_ok` é calculado com os schemas Pydantic v2 de [schemas/correcao.py](../schemas/correcao.py);
 - `tokens_input`, `tokens_output` e `custo_estimado_usd` só são preenchidos se a API devolver esses metadados na resposta.
 
 ## Listas

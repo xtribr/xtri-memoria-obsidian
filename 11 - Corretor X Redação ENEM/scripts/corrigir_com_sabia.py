@@ -34,6 +34,12 @@ from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+from schemas.correcao import parse_resposta_sabia, schema_for_etapa
+
 
 API_URL = "https://chat.maritaca.ai/api/chat/completions"
 DEFAULT_MODEL = "sabia-4"
@@ -789,12 +795,10 @@ def normalize_gate_anulacao(raw: dict[str, Any]) -> GateAnulacao:
 
 def validar_json_etapa(raw: dict[str, Any], etapa: str) -> tuple[bool, str]:
     try:
-        if etapa == "gate":
-            normalize_gate_anulacao(raw)
-        elif etapa.upper() in COMPETENCIAS:
-            normalize_avaliacao(raw, etapa.upper())
-        else:
-            return False, f"Etapa desconhecida: {etapa}"
+        schema = schema_for_etapa(etapa)
+        _, erro = parse_resposta_sabia(raw, schema)
+        if erro:
+            return False, erro
     except Exception as exc:
         return False, f"{type(exc).__name__}: {exc}"
     return True, ""

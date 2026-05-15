@@ -133,6 +133,14 @@ Cada chamada deve retornar JSON com:
 
 O prompt-base usado pelo script inclui gates de anulação antes da nota, regra de tangenciamento para C3 e C5, ordem de autoridade metodológica e instrução para escolher a faixa inferior em caso de dúvida entre duas notas.
 
+## Validação Pydantic
+
+As respostas do Sabiá são validadas com Pydantic v2 antes de entrar no Excel.
+
+- Schemas: [schemas/correcao.py](../schemas/correcao.py);
+- Política: resposta inválida interrompe a correção e lança erro, sem entrada silenciosa no Excel;
+- A aba `Auditoria` usa `validacao_pydantic_ok` e `erros_pydantic` para rastrear a validação das chamadas aceitas pelo fluxo.
+
 Campos opcionais por caso:
 
 - `status-tema.txt`: `verificado`, `inferido` ou `ausente`;
