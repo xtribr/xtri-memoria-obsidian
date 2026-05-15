@@ -14,7 +14,42 @@ Cada redação deve gerar uma linha com notas, comentários, sugestões, anulaç
 
 ## Resumo
 
-Explica o fluxo de preenchimento e o significado dos campos.
+Aba analítica para coordenação e time pedagógico, com uma linha por redação e KPIs extraídos dos JSONs das competências.
+
+Colunas:
+
+- `id_redacao`;
+- `data_correcao`;
+- `aluno_escola`;
+- `tema`;
+- `nota_final`;
+- `nivel_proficiencia`;
+- `nota_c1`;
+- `nota_c2`;
+- `nota_c3`;
+- `nota_c4`;
+- `nota_c5`;
+- `total_desvios_c1`;
+- `reincidencia_c1`;
+- `abordagem_tema_c2`;
+- `qtd_repertorios`;
+- `qtd_repertorios_bolso`;
+- `projeto_texto_c3`;
+- `autoria_c3`;
+- `diversidade_coesiva_c4`;
+- `total_elementos_c5`;
+- `articulacao_proposta_c5`;
+- `respeita_dh_c5`;
+- `confianca_geral`;
+- `custo_tokens_total`;
+- `tempo_processamento_s`.
+
+Níveis de proficiência:
+
+- `Insuficiente`: nota final menor que 500;
+- `Regular`: 500 a 699;
+- `Bom`: 700 a 849;
+- `Excelente`: 850 a 1000.
 
 ## Devolutiva
 

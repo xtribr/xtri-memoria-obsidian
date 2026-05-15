@@ -70,6 +70,33 @@ DEVOLUTIVA_HEADERS = [
     "confianca_geral",
     "alertas",
 ]
+RESUMO_HEADERS = [
+    "id_redacao",
+    "data_correcao",
+    "aluno_escola",
+    "tema",
+    "nota_final",
+    "nivel_proficiencia",
+    "nota_c1",
+    "nota_c2",
+    "nota_c3",
+    "nota_c4",
+    "nota_c5",
+    "total_desvios_c1",
+    "reincidencia_c1",
+    "abordagem_tema_c2",
+    "qtd_repertorios",
+    "qtd_repertorios_bolso",
+    "projeto_texto_c3",
+    "autoria_c3",
+    "diversidade_coesiva_c4",
+    "total_elementos_c5",
+    "articulacao_proposta_c5",
+    "respeita_dh_c5",
+    "confianca_geral",
+    "custo_tokens_total",
+    "tempo_processamento_s",
+]
 
 
 RUBRICAS = {
@@ -310,6 +337,9 @@ class ResultadoCorrecao:
     tangenciamento: bool
     nota_final: int
     avaliacoes: list[AvaliacaoCompetencia]
+    raw_respostas: dict[str, dict[str, Any]]
+    custo_tokens_total: int | None = None
+    tempo_processamento_s: float | None = None
 
 
 def read_text(path: Path) -> str:
@@ -752,6 +782,7 @@ def corrigir_redacao(
     retries: int,
     print_progress: bool = False,
 ) -> ResultadoCorrecao:
+    started_at = time.monotonic()
     gate_prompt = build_gate_anulacao_prompt(tema, redacao, status_ocr, status_tema, num_linhas)
     gate_raw = extract_json(call_sabia(api_key, model, gate_prompt, timeout, retries))
     gate = normalize_gate_anulacao(gate_raw)
@@ -766,6 +797,8 @@ def corrigir_redacao(
             tangenciamento=False,
             nota_final=nota_final,
             avaliacoes=avaliacoes,
+            raw_respostas={"gate": gate_raw},
+            tempo_processamento_s=round(time.monotonic() - started_at, 3),
         )
 
     if print_progress:
@@ -773,6 +806,7 @@ def corrigir_redacao(
 
     tangenciamento_c2_detectado = tangenciamento_c2_inicial
     avaliacoes_por_competencia: dict[str, AvaliacaoCompetencia] = {}
+    raw_respostas: dict[str, dict[str, Any]] = {"gate": gate_raw}
     for competencia in ORDEM_CORRECAO:
         avaliacao, raw = corrigir_competencia(
             competencia,
@@ -788,6 +822,7 @@ def corrigir_redacao(
             timeout,
             retries,
         )
+        raw_respostas[competencia] = raw
         if competencia == "C2" and raw_indica_tangenciamento_c2(raw):
             tangenciamento_c2_detectado = True
         if tangenciamento_c2_detectado and competencia in COMPETENCIAS_COM_TETO_TANGENCIAMENTO:
@@ -804,6 +839,8 @@ def corrigir_redacao(
         tangenciamento=tangenciamento_c2_detectado,
         nota_final=nota_final,
         avaliacoes=avaliacoes,
+        raw_respostas=raw_respostas,
+        tempo_processamento_s=round(time.monotonic() - started_at, 3),
     )
 
 
@@ -817,6 +854,47 @@ def confianca_geral(avaliacoes: list[AvaliacaoCompetencia]) -> str:
     if not confidences:
         return "baixa"
     return min(confidences, key=lambda item: ranks.get(item, 0))
+
+
+def nivel_proficiencia(nota_final: int) -> str:
+    if nota_final < 500:
+        return "Insuficiente"
+    if nota_final < 700:
+        return "Regular"
+    if nota_final < 850:
+        return "Bom"
+    return "Excelente"
+
+
+def safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None or value == "":
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def raw_competencia(resultado: ResultadoCorrecao, competencia: str) -> dict[str, Any]:
+    raw = resultado.raw_respostas.get(competencia.upper(), {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def count_repertorios(raw_c2: dict[str, Any]) -> int:
+    repertorios = raw_c2.get("repertorios_identificados")
+    return len(repertorios) if isinstance(repertorios, list) else 0
+
+
+def count_repertorios_bolso(raw_c2: dict[str, Any]) -> int:
+    repertorios = raw_c2.get("repertorios_identificados")
+    if not isinstance(repertorios, list):
+        return 0
+    return sum(
+        1
+        for repertorio in repertorios
+        if isinstance(repertorio, dict)
+        and strip_accents(str(repertorio.get("classificacao", ""))).strip().lower() == "bolso"
+    )
 
 
 def build_alertas(status_tema: str, status_ocr: str, resultado: ResultadoCorrecao) -> str:
@@ -906,6 +984,103 @@ def style_devolutiva(ws: Any) -> None:
     ws.auto_filter.ref = f"A1:{get_column_letter(len(DEVOLUTIVA_HEADERS))}{max(ws.max_row, 1)}"
 
 
+def style_resumo(ws: Any) -> None:
+    header_fill = PatternFill("solid", fgColor="007AFF")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    widths = {
+        "A": 18,
+        "B": 20,
+        "C": 24,
+        "D": 42,
+        "E": 12,
+        "F": 18,
+        "G": 10,
+        "H": 10,
+        "I": 10,
+        "J": 10,
+        "K": 10,
+        "L": 16,
+        "M": 16,
+        "N": 20,
+        "O": 16,
+        "P": 20,
+        "Q": 20,
+        "R": 16,
+        "S": 20,
+        "T": 18,
+        "U": 22,
+        "V": 16,
+        "W": 16,
+        "X": 18,
+        "Y": 22,
+    }
+    for column, width in widths.items():
+        ws.column_dimensions[column].width = width
+
+    ws.row_dimensions[1].height = 36
+    for row_idx in range(2, ws.max_row + 1):
+        ws.row_dimensions[row_idx].height = 42
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(RESUMO_HEADERS))}{max(ws.max_row, 1)}"
+
+
+def build_resumo_row(
+    case_id: str,
+    data_correcao: datetime,
+    aluno_escola: str,
+    tema: str,
+    resultado: ResultadoCorrecao,
+) -> list[Any]:
+    por_competencia = avaliacoes_por_competencia(resultado.avaliacoes)
+    raw_c1 = raw_competencia(resultado, "C1")
+    raw_c2 = raw_competencia(resultado, "C2")
+    raw_c3 = raw_competencia(resultado, "C3")
+    raw_c4 = raw_competencia(resultado, "C4")
+    raw_c5 = raw_competencia(resultado, "C5")
+
+    total_desvios_c1 = safe_int(raw_c1.get("total_desvios"))
+    if total_desvios_c1 == 0 and isinstance(raw_c1.get("desvios_encontrados"), list):
+        total_desvios_c1 = len(raw_c1["desvios_encontrados"])
+
+    return [
+        case_id,
+        data_correcao,
+        aluno_escola,
+        tema,
+        resultado.nota_final,
+        nivel_proficiencia(resultado.nota_final),
+        por_competencia["c1"].nota_corretor_x,
+        por_competencia["c2"].nota_corretor_x,
+        por_competencia["c3"].nota_corretor_x,
+        por_competencia["c4"].nota_corretor_x,
+        por_competencia["c5"].nota_corretor_x,
+        total_desvios_c1,
+        normalize_bool(raw_c1.get("reincidencia")),
+        str(raw_c2.get("abordagem_tema", "")).strip(),
+        count_repertorios(raw_c2),
+        count_repertorios_bolso(raw_c2),
+        str(raw_c3.get("projeto_de_texto", "")).strip(),
+        str(raw_c3.get("autoria", "")).strip(),
+        str(raw_c4.get("diversidade_coesiva", "")).strip(),
+        safe_int(raw_c5.get("total_elementos")),
+        normalize_bool(raw_c5.get("articulacao_com_texto")),
+        normalize_bool(raw_c5.get("respeita_direitos_humanos")),
+        confianca_geral(resultado.avaliacoes),
+        resultado.custo_tokens_total,
+        resultado.tempo_processamento_s,
+    ]
+
+
 def fill_workbook(
     template_path: Path,
     output_path: Path,
@@ -920,6 +1095,8 @@ def fill_workbook(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(template_path, output_path)
     wb = load_workbook(output_path)
+    data_correcao = datetime.now().replace(microsecond=0)
+
     ws = wb["Devolutiva"] if "Devolutiva" in wb.sheetnames else wb.create_sheet("Devolutiva")
     reset_worksheet(ws)
 
@@ -929,7 +1106,7 @@ def fill_workbook(
 
     row = [
         case_id,
-        datetime.now().replace(microsecond=0),
+        data_correcao,
         aluno_nome,
         aluno_escola,
         tema,
@@ -962,6 +1139,15 @@ def fill_workbook(
     ws.append(row)
     ws["B2"].number_format = "yyyy-mm-dd hh:mm:ss"
     style_devolutiva(ws)
+
+    ws_resumo = wb["Resumo"] if "Resumo" in wb.sheetnames else wb.create_sheet("Resumo")
+    reset_worksheet(ws_resumo)
+    ws_resumo.append(RESUMO_HEADERS)
+    ws_resumo.append(build_resumo_row(case_id, data_correcao, aluno_escola, tema, resultado))
+    ws_resumo["B2"].number_format = "yyyy-mm-dd hh:mm:ss"
+    ws_resumo["Y2"].number_format = "0.000"
+    style_resumo(ws_resumo)
+
     wb.save(output_path)
 
 
