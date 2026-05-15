@@ -34,6 +34,8 @@ API_URL = "https://chat.maritaca.ai/api/chat/completions"
 DEFAULT_MODEL = "sabia-4"
 VALID_SCORES = {0, 40, 80, 120, 160, 200}
 COMPETENCIAS = ["C1", "C2", "C3", "C4", "C5"]
+ORDEM_CORRECAO = ["C2", "C1", "C3", "C4", "C5"]
+COMPETENCIAS_COM_TETO_TANGENCIAMENTO = {"C3", "C5"}
 
 
 RUBRICAS = {
@@ -266,6 +268,15 @@ class GateAnulacao:
     nivel_confianca: str
 
 
+@dataclass
+class ResultadoCorrecao:
+    anulado: bool
+    motivos_anulacao: list[str]
+    tangenciamento: bool
+    nota_final: int
+    avaliacoes: list[AvaliacaoCompetencia]
+
+
 def read_text(path: Path) -> str:
     text = path.read_text(encoding="utf-8").strip()
     if not text:
@@ -324,6 +335,13 @@ def normalize_confidence(value: str) -> str:
         "baixa": "Baixa",
     }
     return confidence_map.get(normalized, "Baixa")
+
+
+def normalize_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = strip_accents(str(value)).strip().lower()
+    return normalized in {"true", "1", "sim", "yes"}
 
 
 def formato_json_for(competencia: str) -> str:
@@ -580,6 +598,52 @@ def normalize_gate_anulacao(raw: dict[str, Any]) -> GateAnulacao:
     )
 
 
+def raw_indica_tangenciamento_c2(raw: dict[str, Any]) -> bool:
+    abordagem = strip_accents(str(raw.get("abordagem_tema", ""))).strip().lower()
+    return normalize_bool(raw.get("tangenciamento_c2")) or abordagem == "tangenciamento"
+
+
+def append_sentence(text: str, sentence: str) -> str:
+    text = text.strip()
+    if sentence in text:
+        return text
+    if not text:
+        return sentence
+    return f"{text} {sentence}"
+
+
+def append_evidence(text: str, evidence: str) -> str:
+    text = text.strip()
+    if evidence in text:
+        return text
+    if not text:
+        return evidence
+    return f"{text} | {evidence}"
+
+
+def aplicar_teto_tangenciamento(avaliacao: AvaliacaoCompetencia) -> AvaliacaoCompetencia:
+    if avaliacao.competencia not in COMPETENCIAS_COM_TETO_TANGENCIAMENTO:
+        return avaliacao
+
+    nota_original = avaliacao.nota_corretor_x
+    if nota_original > 40:
+        avaliacao.nota_corretor_x = 40
+        avaliacao.comentario_do_erro = append_sentence(
+            avaliacao.comentario_do_erro,
+            f"Teto por tangenciamento aplicado: nota limitada de {nota_original} para 40.",
+        )
+    else:
+        avaliacao.comentario_do_erro = append_sentence(
+            avaliacao.comentario_do_erro,
+            "Teto por tangenciamento aplicado; nota já estava dentro do limite.",
+        )
+    avaliacao.evidencia_no_texto = append_evidence(
+        avaliacao.evidencia_no_texto,
+        "Teto por tangenciamento aplicado",
+    )
+    return avaliacao
+
+
 def avaliacoes_por_anulacao(gate: GateAnulacao) -> list[AvaliacaoCompetencia]:
     motivos = ", ".join(gate.motivos) if gate.motivos else "condição de anulação"
     comentario = f"Redação anulada antes da avaliação por competência. Motivo(s): {motivos}."
@@ -596,6 +660,106 @@ def avaliacoes_por_anulacao(gate: GateAnulacao) -> list[AvaliacaoCompetencia]:
         )
         for competencia in COMPETENCIAS
     ]
+
+
+def corrigir_competencia(
+    competencia: str,
+    api_key: str,
+    model: str,
+    tema: str,
+    redacao: str,
+    status_tema: str,
+    status_ocr: str,
+    status_anulacao: str,
+    tangenciamento_c2: bool,
+    prompts_dir: Path,
+    timeout: int,
+    retries: int,
+) -> tuple[AvaliacaoCompetencia, dict[str, Any]]:
+    rubrica = load_competencia_prompt(competencia, prompts_dir)
+    prompt = build_prompt(
+        competencia,
+        tema,
+        redacao,
+        status_ocr,
+        rubrica,
+        status_tema,
+        status_anulacao,
+        "true" if tangenciamento_c2 else "false",
+    )
+    content = call_sabia(api_key, model, prompt, timeout, retries)
+    raw = extract_json(content)
+    return normalize_avaliacao(raw, competencia), raw
+
+
+def corrigir_redacao(
+    api_key: str,
+    model: str,
+    tema: str,
+    redacao: str,
+    status_tema: str,
+    status_ocr: str,
+    status_anulacao: str,
+    tangenciamento_c2_inicial: bool,
+    num_linhas: int,
+    prompts_dir: Path,
+    timeout: int,
+    retries: int,
+    print_progress: bool = False,
+) -> ResultadoCorrecao:
+    gate_prompt = build_gate_anulacao_prompt(tema, redacao, status_ocr, status_tema, num_linhas)
+    gate_raw = extract_json(call_sabia(api_key, model, gate_prompt, timeout, retries))
+    gate = normalize_gate_anulacao(gate_raw)
+    if gate.anulado:
+        avaliacoes = avaliacoes_por_anulacao(gate)
+        nota_final = sum(avaliacao.nota_corretor_x for avaliacao in avaliacoes)
+        if print_progress:
+            print(f"GATE: redação anulada ({', '.join(gate.motivos)})")
+        return ResultadoCorrecao(
+            anulado=True,
+            motivos_anulacao=gate.motivos,
+            tangenciamento=False,
+            nota_final=nota_final,
+            avaliacoes=avaliacoes,
+        )
+
+    if print_progress:
+        print("GATE: nenhuma condição de anulação total detectada.")
+
+    tangenciamento_c2_detectado = tangenciamento_c2_inicial
+    avaliacoes_por_competencia: dict[str, AvaliacaoCompetencia] = {}
+    for competencia in ORDEM_CORRECAO:
+        avaliacao, raw = corrigir_competencia(
+            competencia,
+            api_key,
+            model,
+            tema,
+            redacao,
+            status_tema,
+            status_ocr,
+            status_anulacao,
+            tangenciamento_c2_detectado,
+            prompts_dir,
+            timeout,
+            retries,
+        )
+        if competencia == "C2" and raw_indica_tangenciamento_c2(raw):
+            tangenciamento_c2_detectado = True
+        if tangenciamento_c2_detectado and competencia in COMPETENCIAS_COM_TETO_TANGENCIAMENTO:
+            avaliacao = aplicar_teto_tangenciamento(avaliacao)
+        avaliacoes_por_competencia[competencia] = avaliacao
+        if print_progress:
+            print(f"{competencia}: {avaliacao.nota_corretor_x}/200 ({avaliacao.nivel_confianca})")
+
+    avaliacoes = [avaliacoes_por_competencia[competencia] for competencia in COMPETENCIAS]
+    nota_final = sum(avaliacao.nota_corretor_x for avaliacao in avaliacoes)
+    return ResultadoCorrecao(
+        anulado=False,
+        motivos_anulacao=[],
+        tangenciamento=tangenciamento_c2_detectado,
+        nota_final=nota_final,
+        avaliacoes=avaliacoes,
+    )
 
 
 def fill_workbook(
@@ -681,48 +845,21 @@ def main() -> int:
         print("Erro: defina SABIA_API_KEY no ambiente. Nunca coloque a chave no repositório.", file=sys.stderr)
         return 2
 
-    gate_prompt = build_gate_anulacao_prompt(tema, redacao, args.status_ocr, status_tema, num_linhas)
-    gate_raw = extract_json(call_sabia(api_key, args.model, gate_prompt, args.timeout, args.retries))
-    gate = normalize_gate_anulacao(gate_raw)
-    if gate.anulado:
-        avaliacoes = avaliacoes_por_anulacao(gate)
-        fill_workbook(
-            args.template_xlsx,
-            args.out_xlsx,
-            args.case_id,
-            args.aluno_id,
-            tema,
-            args.status_ocr,
-            avaliacoes,
-        )
-        print(f"GATE: redação anulada ({', '.join(gate.motivos)})")
-        print(f"Excel salvo em: {args.out_xlsx}")
-        return 0
-
-    status_anulacao = "nenhuma"
-    print("GATE: nenhuma condição de anulação total detectada.")
-
-    avaliacoes: list[AvaliacaoCompetencia] = []
-    for competencia in COMPETENCIAS:
-        rubrica = load_competencia_prompt(competencia, args.brain_prompts_dir)
-        prompt = build_prompt(
-            competencia,
-            tema,
-            redacao,
-            args.status_ocr,
-            rubrica,
-            status_tema,
-            status_anulacao,
-            "true" if tangenciamento_c2_detectado else "false",
-        )
-        content = call_sabia(api_key, args.model, prompt, args.timeout, args.retries)
-        raw = extract_json(content)
-        avaliacoes.append(normalize_avaliacao(raw, competencia))
-        if competencia == "C2" and (
-            raw.get("tangenciamento_c2") is True or raw.get("abordagem_tema") == "tangenciamento"
-        ):
-            tangenciamento_c2_detectado = True
-        print(f"{competencia}: {avaliacoes[-1].nota_corretor_x}/200 ({avaliacoes[-1].nivel_confianca})")
+    resultado = corrigir_redacao(
+        api_key=api_key,
+        model=args.model,
+        tema=tema,
+        redacao=redacao,
+        status_tema=status_tema,
+        status_ocr=args.status_ocr,
+        status_anulacao="nenhuma",
+        tangenciamento_c2_inicial=tangenciamento_c2_detectado,
+        num_linhas=num_linhas,
+        prompts_dir=args.brain_prompts_dir,
+        timeout=args.timeout,
+        retries=args.retries,
+        print_progress=True,
+    )
 
     fill_workbook(
         args.template_xlsx,
@@ -731,8 +868,11 @@ def main() -> int:
         args.aluno_id,
         tema,
         args.status_ocr,
-        avaliacoes,
+        resultado.avaliacoes,
     )
+    if not resultado.anulado:
+        print(f"Tangenciamento C2: {'true' if resultado.tangenciamento else 'false'}")
+    print(f"Nota final estimada: {resultado.nota_final}/1000")
     print(f"Excel salvo em: {args.out_xlsx}")
     return 0
 

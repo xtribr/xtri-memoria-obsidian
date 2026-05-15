@@ -110,13 +110,17 @@ O script faz uma chamada 0 antes das competências para verificar anulação tot
 
 Se a chamada 0 retornar `anulado = true`, o script não executa C1-C5 e preenche o Excel com nota 0 nas cinco competências, registrando o motivo e a evidência da anulação.
 
-Se a chamada 0 retornar `anulado = false`, o script faz uma chamada separada para cada competência:
+Se a chamada 0 retornar `anulado = false`, o script faz uma chamada separada para cada competência, com C2 primeiro para detectar tangenciamento:
 
-- C1;
 - C2;
+- C1;
 - C3;
 - C4;
 - C5.
+
+Mesmo com C2 sendo chamada primeiro, o Excel é preenchido na ordem C1, C2, C3, C4 e C5.
+
+Se C2 indicar `tangenciamento_c2 = true`, C3 e C5 recebem essa flag no prompt. O script também aplica uma verificação dupla: se C3 ou C5 retornarem nota acima de 40 com tangenciamento ativo, a nota é limitada a 40 antes de preencher o Excel.
 
 Cada chamada deve retornar JSON com:
 
