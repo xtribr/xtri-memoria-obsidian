@@ -24,10 +24,13 @@ import unicodedata
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 
 API_URL = "https://chat.maritaca.ai/api/chat/completions"
@@ -36,6 +39,37 @@ VALID_SCORES = {0, 40, 80, 120, 160, 200}
 COMPETENCIAS = ["C1", "C2", "C3", "C4", "C5"]
 ORDEM_CORRECAO = ["C2", "C1", "C3", "C4", "C5"]
 COMPETENCIAS_COM_TETO_TANGENCIAMENTO = {"C3", "C5"}
+DEVOLUTIVA_HEADERS = [
+    "id_redacao",
+    "data_correcao",
+    "aluno_nome",
+    "aluno_escola",
+    "tema",
+    "status_tema",
+    "anulada",
+    "motivos_anulacao",
+    "tangenciamento",
+    "nota_c1",
+    "nota_c2",
+    "nota_c3",
+    "nota_c4",
+    "nota_c5",
+    "nota_final",
+    "teto_aplicado_c3",
+    "teto_aplicado_c5",
+    "comentario_c1",
+    "comentario_c2",
+    "comentario_c3",
+    "comentario_c4",
+    "comentario_c5",
+    "sugestao_c1",
+    "sugestao_c2",
+    "sugestao_c3",
+    "sugestao_c4",
+    "sugestao_c5",
+    "confianca_geral",
+    "alertas",
+]
 
 
 RUBRICAS = {
@@ -258,6 +292,7 @@ class AvaliacaoCompetencia:
     evidencia_no_texto: str
     sugestao_de_melhoria: str
     nivel_confianca: str
+    teto_tangenciamento_aplicado: bool = False
 
 
 @dataclass
@@ -335,6 +370,15 @@ def normalize_confidence(value: str) -> str:
         "baixa": "Baixa",
     }
     return confidence_map.get(normalized, "Baixa")
+
+
+def confidence_to_excel(value: str) -> str:
+    normalized = strip_accents(value).strip().lower()
+    if normalized == "alta":
+        return "alta"
+    if normalized == "media":
+        return "media"
+    return "baixa"
 
 
 def normalize_bool(value: Any) -> bool:
@@ -625,6 +669,7 @@ def aplicar_teto_tangenciamento(avaliacao: AvaliacaoCompetencia) -> AvaliacaoCom
     if avaliacao.competencia not in COMPETENCIAS_COM_TETO_TANGENCIAMENTO:
         return avaliacao
 
+    avaliacao.teto_tangenciamento_aplicado = True
     nota_original = avaliacao.nota_corretor_x
     if nota_original > 40:
         avaliacao.nota_corretor_x = 40
@@ -762,31 +807,161 @@ def corrigir_redacao(
     )
 
 
+def avaliacoes_por_competencia(avaliacoes: list[AvaliacaoCompetencia]) -> dict[str, AvaliacaoCompetencia]:
+    return {avaliacao.competencia.lower(): avaliacao for avaliacao in avaliacoes}
+
+
+def confianca_geral(avaliacoes: list[AvaliacaoCompetencia]) -> str:
+    ranks = {"baixa": 0, "media": 1, "alta": 2}
+    confidences = [confidence_to_excel(avaliacao.nivel_confianca) for avaliacao in avaliacoes]
+    if not confidences:
+        return "baixa"
+    return min(confidences, key=lambda item: ranks.get(item, 0))
+
+
+def build_alertas(status_tema: str, status_ocr: str, resultado: ResultadoCorrecao) -> str:
+    alertas: list[str] = []
+    status_tema_normalizado = strip_accents(status_tema).strip().lower()
+    if status_tema_normalizado == "inferido":
+        alertas.append("tema_inferido")
+    elif status_tema_normalizado == "ausente":
+        alertas.append("tema_ausente")
+
+    status_ocr_normalizado = strip_accents(status_ocr).strip().lower()
+    if any(marker in status_ocr_normalizado for marker in ("baixa", "ilegivel", "incerta", "manual", "sem ocr", "revisao humana")):
+        alertas.append("ocr_revisao_humana_recomendada")
+
+    if resultado.anulado:
+        alertas.append("redacao_anulada")
+    if resultado.tangenciamento:
+        alertas.append("tangenciamento")
+
+    por_competencia = avaliacoes_por_competencia(resultado.avaliacoes)
+    if por_competencia.get("c3") and por_competencia["c3"].teto_tangenciamento_aplicado:
+        alertas.append("teto_aplicado_c3")
+    if por_competencia.get("c5") and por_competencia["c5"].teto_tangenciamento_aplicado:
+        alertas.append("teto_aplicado_c5")
+
+    return "; ".join(dict.fromkeys(alertas))
+
+
+def reset_worksheet(ws: Any) -> None:
+    for merged_range in list(ws.merged_cells.ranges):
+        ws.unmerge_cells(str(merged_range))
+    if ws.max_row:
+        ws.delete_rows(1, ws.max_row)
+
+
+def style_devolutiva(ws: Any) -> None:
+    header_fill = PatternFill("solid", fgColor="1D1D1F")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    widths = {
+        "A": 18,
+        "B": 20,
+        "C": 24,
+        "D": 24,
+        "E": 42,
+        "F": 14,
+        "G": 10,
+        "H": 28,
+        "I": 16,
+        "J": 10,
+        "K": 10,
+        "L": 10,
+        "M": 10,
+        "N": 10,
+        "O": 12,
+        "P": 16,
+        "Q": 16,
+        "R": 42,
+        "S": 42,
+        "T": 42,
+        "U": 42,
+        "V": 42,
+        "W": 34,
+        "X": 34,
+        "Y": 34,
+        "Z": 34,
+        "AA": 34,
+        "AB": 16,
+        "AC": 36,
+    }
+    for column, width in widths.items():
+        ws.column_dimensions[column].width = width
+
+    ws.row_dimensions[1].height = 36
+    for row_idx in range(2, ws.max_row + 1):
+        ws.row_dimensions[row_idx].height = 90
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(DEVOLUTIVA_HEADERS))}{max(ws.max_row, 1)}"
+
+
 def fill_workbook(
     template_path: Path,
     output_path: Path,
     case_id: str,
-    aluno_id: str,
+    aluno_nome: str,
+    aluno_escola: str,
     tema: str,
+    status_tema: str,
     status_ocr: str,
-    avaliacoes: list[AvaliacaoCompetencia],
+    resultado: ResultadoCorrecao,
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(template_path, output_path)
     wb = load_workbook(output_path)
-    ws = wb["Devolutiva"]
-    for idx, avaliacao in enumerate(avaliacoes, start=5):
-        ws.cell(idx, 1).value = case_id
-        ws.cell(idx, 2).value = aluno_id
-        ws.cell(idx, 3).value = tema
-        ws.cell(idx, 4).value = avaliacao.competencia
-        ws.cell(idx, 5).value = avaliacao.nota_corretor_x
-        ws.cell(idx, 6).value = avaliacao.comentario_do_erro
-        ws.cell(idx, 7).value = avaliacao.evidencia_no_texto
-        ws.cell(idx, 8).value = avaliacao.sugestao_de_melhoria
-        ws.cell(idx, 12).value = avaliacao.nivel_confianca
-        ws.cell(idx, 13).value = status_ocr
-        ws.cell(idx, 14).value = "aguardando validação"
+    ws = wb["Devolutiva"] if "Devolutiva" in wb.sheetnames else wb.create_sheet("Devolutiva")
+    reset_worksheet(ws)
+
+    por_competencia = avaliacoes_por_competencia(resultado.avaliacoes)
+    def avaliacao(competencia: str) -> AvaliacaoCompetencia:
+        return por_competencia[competencia.lower()]
+
+    row = [
+        case_id,
+        datetime.now().replace(microsecond=0),
+        aluno_nome,
+        aluno_escola,
+        tema,
+        status_tema,
+        resultado.anulado,
+        "; ".join(resultado.motivos_anulacao),
+        resultado.tangenciamento,
+        avaliacao("C1").nota_corretor_x,
+        avaliacao("C2").nota_corretor_x,
+        avaliacao("C3").nota_corretor_x,
+        avaliacao("C4").nota_corretor_x,
+        avaliacao("C5").nota_corretor_x,
+        resultado.nota_final,
+        avaliacao("C3").teto_tangenciamento_aplicado,
+        avaliacao("C5").teto_tangenciamento_aplicado,
+        avaliacao("C1").comentario_do_erro,
+        avaliacao("C2").comentario_do_erro,
+        avaliacao("C3").comentario_do_erro,
+        avaliacao("C4").comentario_do_erro,
+        avaliacao("C5").comentario_do_erro,
+        avaliacao("C1").sugestao_de_melhoria,
+        avaliacao("C2").sugestao_de_melhoria,
+        avaliacao("C3").sugestao_de_melhoria,
+        avaliacao("C4").sugestao_de_melhoria,
+        avaliacao("C5").sugestao_de_melhoria,
+        confianca_geral(resultado.avaliacoes),
+        build_alertas(status_tema, status_ocr, resultado),
+    ]
+    ws.append(DEVOLUTIVA_HEADERS)
+    ws.append(row)
+    ws["B2"].number_format = "yyyy-mm-dd hh:mm:ss"
+    style_devolutiva(ws)
     wb.save(output_path)
 
 
@@ -796,6 +971,8 @@ def main() -> int:
     parser.add_argument("--redacao-file", required=True, type=Path)
     parser.add_argument("--case-id", default="CASO-001")
     parser.add_argument("--aluno-id", default="Aluno 001")
+    parser.add_argument("--aluno-nome")
+    parser.add_argument("--aluno-escola", default="")
     parser.add_argument("--status-ocr", default="Não necessário")
     parser.add_argument("--status-tema", choices=["verificado", "inferido", "ausente"])
     parser.add_argument("--status-anulacao", default="nenhuma")
@@ -865,10 +1042,12 @@ def main() -> int:
         args.template_xlsx,
         args.out_xlsx,
         args.case_id,
-        args.aluno_id,
+        args.aluno_nome or args.aluno_id,
+        args.aluno_escola,
         tema,
+        status_tema,
         args.status_ocr,
-        resultado.avaliacoes,
+        resultado,
     )
     if not resultado.anulado:
         print(f"Tangenciamento C2: {'true' if resultado.tangenciamento else 'false'}")

@@ -6,15 +6,9 @@ Arquivo: [Template - Entrega Excel Corretor X.xlsx](templates/Template%20-%20Ent
 
 ## Decisão
 
-A entrega operacional da correção será em Excel, com uma linha por competência.
+A entrega operacional da correção será em Excel, com uma linha consolidada por redação na aba `Devolutiva`.
 
-Cada redação deve gerar cinco linhas:
-
-- C1;
-- C2;
-- C3;
-- C4;
-- C5.
+Cada redação deve gerar uma linha com notas, comentários, sugestões, anulação, tangenciamento, teto aplicado e confiança geral.
 
 ## Abas do modelo
 
@@ -29,23 +23,38 @@ Aba principal para aluno, professor ou operação pedagógica.
 Colunas:
 
 - `id_redacao`;
-- `aluno_id`;
+- `data_correcao`;
+- `aluno_nome`;
+- `aluno_escola`;
 - `tema`;
-- `competencia`;
-- `nota_corretor_x`;
-- `comentario_do_erro`;
-- `evidencia_no_texto`;
-- `sugestao_de_melhoria`;
-- `nota_oficial_ou_validada`;
-- `fonte_nota`;
-- `diferenca`;
-- `nivel_confianca`;
-- `status_ocr`;
-- `status_validacao`.
+- `status_tema`;
+- `anulada`;
+- `motivos_anulacao`;
+- `tangenciamento`;
+- `nota_c1`;
+- `nota_c2`;
+- `nota_c3`;
+- `nota_c4`;
+- `nota_c5`;
+- `nota_final`;
+- `teto_aplicado_c3`;
+- `teto_aplicado_c5`;
+- `comentario_c1`;
+- `comentario_c2`;
+- `comentario_c3`;
+- `comentario_c4`;
+- `comentario_c5`;
+- `sugestao_c1`;
+- `sugestao_c2`;
+- `sugestao_c3`;
+- `sugestao_c4`;
+- `sugestao_c5`;
+- `confianca_geral`;
+- `alertas`.
 
 ## Calibração
 
-Resumo automático por competência:
+Resumo automático por competência. A estrutura antiga do template ainda será substituída na próxima revisão de abas auxiliares, pois a `Devolutiva` agora é consolidada por redação.
 
 - casos validados;
 - diferença média;
