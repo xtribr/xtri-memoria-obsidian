@@ -41,9 +41,16 @@ Observação de interface: os prompts e rubricas continuam no vault e são usado
 
 Use `Importar Pasta` quando houver um lote com um arquivo por aluno. Use `Importar Arquivo` para casos avulsos ou seleção manual de poucos arquivos. Os botões também aparecem na barra lateral como `Pasta` e `Arquivos`.
 
-Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` rodam OCR local com Apple Vision; quando há texto extraído, o caso fica marcado como `parcial` para revisão antes da correção. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição em `redacao.txt`.
+Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR local com PaddleOCR (`lang=pt`) quando as dependências estão instaladas; se PaddleOCR falhar ou não estiver disponível, o app cai para Apple Vision. Quando há texto extraído, o caso fica marcado como `parcial` para revisão antes da correção. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição em `redacao.txt`.
 
-Casos de imagem importados antes do OCR automático podem ser processados pelo botão `Rodar OCR`, exibido no painel do caso quando há `original.ext` compatível.
+Casos de imagem podem ser processados ou reprocessados pelo botão `Rodar OCR`/`Reprocessar OCR`, exibido no painel do caso quando há `original.ext` compatível.
+
+Para instalar o OCR opcional com PaddleOCR:
+
+```bash
+cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação"
+.venv/bin/python -m pip install -r "corretor x/11 - Corretor X Redação ENEM/scripts/requirements-ocr.txt"
+```
 
 Para cada arquivo aceito, o app cria:
 

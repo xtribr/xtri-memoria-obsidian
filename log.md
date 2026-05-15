@@ -214,3 +214,22 @@ Decisão:
 
 - O Obsidian continua sendo o cérebro metodológico.
 - A interface do app passa a priorizar operação: importar, selecionar caso, revisar transcrição, rodar OCR/correção e abrir Excel.
+
+## [2026-05-15] change | PaddleOCR como OCR preferencial em imagens
+
+Integrado PaddleOCR como tentativa preferencial para OCR de imagens no XTRI-RED.
+
+Nota principal:
+
+- [[13 - XTRI-RED App Mac]]
+
+Arquivos:
+
+- `scripts/ocr_paddle.py`
+- `scripts/requirements-ocr.txt`
+
+Comportamento:
+
+- O app tenta PaddleOCR com `lang=pt` quando o `.venv` possui `paddlepaddle` e `paddleocr`.
+- Se PaddleOCR falhar, o app mantém fallback automático para Apple Vision.
+- A transcrição gerada por PaddleOCR também é salva em `redacao-paddleocr.txt` e metadados em `ocr-paddle.json`.

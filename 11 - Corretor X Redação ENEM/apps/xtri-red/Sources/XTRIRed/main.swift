@@ -77,6 +77,28 @@ struct OCRResult: Sendable {
     }
 }
 
+struct PaddleOCRPayload: Decodable {
+    let ok: Bool
+    let engine: String?
+    let text: String
+    let characterCount: Int
+    let lineCount: Int
+    let avgScore: Double?
+    let status: String?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case engine
+        case text
+        case characterCount = "character_count"
+        case lineCount = "line_count"
+        case avgScore = "avg_score"
+        case status
+        case error
+    }
+}
+
 enum KeychainError: LocalizedError {
     case unexpectedStatus(OSStatus)
     case invalidData
@@ -674,6 +696,23 @@ enum CaseImporter {
     }
 
     private static func runImageOCR(originalURL: URL, caseURL: URL, caseID: String) throws -> OCRResult {
+        if let paddleResult = try? runPaddleOCR(originalURL: originalURL, caseURL: caseURL),
+           paddleResult.ok,
+           paddleResult.characterCount >= 500,
+           !paddleResult.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let status = paddleResult.status ?? "parcial: OCR automatico por PaddleOCR; revisar transcricao antes de corrigir."
+            try write(paddleResult.text, to: caseURL.appendingPathComponent("redacao.txt"))
+            try write(paddleResult.text, to: caseURL.appendingPathComponent("redacao-paddleocr.txt"))
+            try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
+            try write(paddleOCRMetadata(paddleResult), to: caseURL.appendingPathComponent("ocr-paddle.json"))
+            return OCRResult(
+                caseID: caseID,
+                characterCount: paddleResult.characterCount,
+                lineCount: paddleResult.lineCount,
+                status: status
+            )
+        }
+
         let text = try recognizeText(in: originalURL).trimmingCharacters(in: .whitespacesAndNewlines)
         let lines = text
             .split(whereSeparator: \.isNewline)
@@ -690,6 +729,7 @@ enum CaseImporter {
         }
 
         try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
+        try write(text, to: caseURL.appendingPathComponent("redacao-apple-vision.txt"))
 
         return OCRResult(
             caseID: caseID,
@@ -697,6 +737,51 @@ enum CaseImporter {
             lineCount: lines.count,
             status: status
         )
+    }
+
+    private static func runPaddleOCR(originalURL: URL, caseURL: URL) throws -> PaddleOCRPayload? {
+        let vaultURL = caseURL.deletingLastPathComponent().deletingLastPathComponent()
+        let projectRoot = vaultURL.deletingLastPathComponent().deletingLastPathComponent()
+        let pythonURL = projectRoot.appendingPathComponent(".venv/bin/python")
+        let scriptURL = vaultURL.appendingPathComponent("scripts/ocr_paddle.py")
+
+        guard FileManager.default.isExecutableFile(atPath: pythonURL.path),
+              FileManager.default.fileExists(atPath: scriptURL.path) else {
+            return nil
+        }
+
+        let process = Process()
+        process.executableURL = pythonURL
+        process.arguments = [scriptURL.path, "--image", originalURL.path]
+        process.currentDirectoryURL = vaultURL
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+        process.environment = environment
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = FileHandle.nullDevice
+
+        try process.run()
+        process.waitUntilExit()
+
+        let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        guard !output.isEmpty else { return nil }
+
+        return try JSONDecoder().decode(PaddleOCRPayload.self, from: output)
+    }
+
+    private static func paddleOCRMetadata(_ payload: PaddleOCRPayload) throws -> String {
+        let data = try JSONEncoder().encode([
+            "engine": payload.engine ?? "paddleocr",
+            "character_count": "\(payload.characterCount)",
+            "line_count": "\(payload.lineCount)",
+            "avg_score": payload.avgScore.map { "\($0)" } ?? "",
+            "status": payload.status ?? "",
+            "error": payload.error ?? "",
+        ])
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
 
     private static func recognizeText(in imageURL: URL) throws -> String {
@@ -916,11 +1001,11 @@ struct ContentView: View {
             VStack(alignment: .trailing, spacing: 8) {
                 apiKeyPanel
                 HStack {
-                    if !item.isReadyForCorrection {
-                        Button("Rodar OCR") {
+                    if item.canRunOCR {
+                        Button(item.isReadyForCorrection ? "Reprocessar OCR" : "Rodar OCR") {
                             model.runOCRForSelectedCase()
                         }
-                        .disabled(model.isRunning || !item.canRunOCR)
+                        .disabled(model.isRunning)
                     }
                     Button("Dry-run") {
                         model.runSelectedCase(dryRun: true)

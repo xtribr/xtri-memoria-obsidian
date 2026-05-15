@@ -39,9 +39,14 @@ Fluxo recomendado para 500 redações:
 3. Informar o tema oficial comum do lote.
 4. O XTRI-RED cria automaticamente `entradas/caso-*`.
 
-Arquivos `.txt` entram como transcrição pronta para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` rodam OCR local com Apple Vision; quando há texto extraído, o caso fica com `status-ocr.txt = parcial` porque a transcrição de manuscrito precisa de revisão. PDFs são copiados para o caso como `original.pdf`, mas continuam com `status-ocr.txt = aguardando_ocr` até existir texto em `redacao.txt`.
+Arquivos `.txt` entram como transcrição pronta para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR local com PaddleOCR (`lang=pt`) quando o pacote está instalado no `.venv`; se PaddleOCR falhar ou não estiver disponível, o app cai para Apple Vision. Quando há texto extraído, o caso fica com `status-ocr.txt = parcial` porque a transcrição de manuscrito precisa de revisão. PDFs são copiados para o caso como `original.pdf`, mas continuam com `status-ocr.txt = aguardando_ocr` até existir texto em `redacao.txt`.
 
-Casos de imagem importados antes desta atualização podem ser processados pelo botão `Rodar OCR`, exibido quando o caso tem `original.ext` compatível.
+Casos de imagem podem ser processados ou reprocessados pelo botão `Rodar OCR`/`Reprocessar OCR`, exibido quando o caso tem `original.ext` compatível.
+
+Arquivos operacionais:
+
+- `scripts/ocr_paddle.py`
+- `scripts/requirements-ocr.txt`
 
 Estrutura criada por arquivo:
 
