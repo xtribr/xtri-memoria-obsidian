@@ -55,6 +55,13 @@ O app salva a chave no Keychain do macOS quando o usuário clica em `Salvar`. Em
 
 Também é possível apagar a chave pelo botão `Apagar` na interface.
 
+Os runners de terminal usam o mesmo registro do Keychain:
+
+- service: `online.xtri.red`;
+- account: `SABIA_API_KEY`.
+
+Assim, depois de salvar a chave uma vez no app, `scripts/run_caso_sabia.sh` também consegue corrigir sem `export SABIA_API_KEY`.
+
 ## Conexões
 
 - [[12 - Integração Sabiá]]

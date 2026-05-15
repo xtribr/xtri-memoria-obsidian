@@ -14,7 +14,14 @@ Usar o modelo `sabia-4` para gerar a primeira correção estruturada do Corretor
 
 Nunca salvar a chave da Maritaca/Sabiá no vault, no Git ou em arquivo `.env` versionado.
 
-Use variável de ambiente:
+Forma recomendada: abrir o XTRI-RED, colar a chave no campo `SABIA_API_KEY` e clicar em `Salvar`. A chave fica no Keychain do macOS e passa a ser usada automaticamente pelo app e pelos runners de terminal.
+
+O registro usado no Keychain é:
+
+- service: `online.xtri.red`;
+- account: `SABIA_API_KEY`.
+
+Alternativa temporária: usar variável de ambiente apenas na sessão atual do terminal.
 
 ```bash
 export SABIA_API_KEY="sua_chave_aqui"
