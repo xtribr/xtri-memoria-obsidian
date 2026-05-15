@@ -38,7 +38,18 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from schemas.correcao import parse_resposta_sabia, schema_for_etapa
+from schemas.correcao import (
+    GateAnulacao as GateAnulacaoSchema,
+    MetadadosRedacao,
+    RespostaC1,
+    RespostaC2,
+    RespostaC3,
+    RespostaC4,
+    RespostaC5,
+    ResultadoCorrecao as ResultadoCorrecaoSchema,
+    parse_resposta_sabia,
+    schema_for_etapa,
+)
 
 
 API_URL = "https://chat.maritaca.ai/api/chat/completions"
@@ -395,6 +406,15 @@ class ChamadaAuditoria:
     custo_estimado_usd: float | None = None
 
 
+class SabiaValidationError(ValueError):
+    """Erro lançado quando a resposta do Sabiá falha nos schemas Pydantic."""
+
+    def __init__(self, etapa: str, erro: str) -> None:
+        self.etapa = etapa
+        self.erro = erro
+        super().__init__(f"Resposta inválida do Sabiá na etapa {etapa}: {erro}")
+
+
 @dataclass
 class ResultadoCorrecao:
     anulado: bool
@@ -404,6 +424,7 @@ class ResultadoCorrecao:
     avaliacoes: list[AvaliacaoCompetencia]
     raw_respostas: dict[str, dict[str, Any]]
     chamadas_auditoria: list[ChamadaAuditoria]
+    resultado_pydantic: ResultadoCorrecaoSchema | None = None
     custo_tokens_total: int | None = None
     tempo_processamento_s: float | None = None
 
@@ -793,15 +814,15 @@ def normalize_gate_anulacao(raw: dict[str, Any]) -> GateAnulacao:
     )
 
 
-def validar_json_etapa(raw: dict[str, Any], etapa: str) -> tuple[bool, str]:
+def validar_json_etapa(raw: dict[str, Any], etapa: str) -> tuple[Any | None, str]:
     try:
         schema = schema_for_etapa(etapa)
-        _, erro = parse_resposta_sabia(raw, schema)
+        objeto, erro = parse_resposta_sabia(raw, schema)
         if erro:
-            return False, erro
+            return None, erro
+        return objeto, ""
     except Exception as exc:
-        return False, f"{type(exc).__name__}: {exc}"
-    return True, ""
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 def run_sabia_json_call(
@@ -812,17 +833,19 @@ def run_sabia_json_call(
     prompt_version: str,
     timeout: int,
     retries: int,
-) -> tuple[dict[str, Any], ChamadaAuditoria]:
+) -> tuple[dict[str, Any], ChamadaAuditoria, Any]:
     response = call_sabia(api_key, model, prompt, timeout, retries)
     validacao_ok = False
     erros_validacao = ""
     raw: dict[str, Any] = {}
+    objeto_pydantic: Any | None = None
     json_resposta_bruto = response.content
 
     try:
         raw = extract_json(response.content)
         json_resposta_bruto = json.dumps(raw, ensure_ascii=False, sort_keys=True)
-        validacao_ok, erros_validacao = validar_json_etapa(raw, etapa)
+        objeto_pydantic, erros_validacao = validar_json_etapa(raw, etapa)
+        validacao_ok = objeto_pydantic is not None
     except Exception as exc:
         erros_validacao = f"{type(exc).__name__}: {exc}"
 
@@ -843,9 +866,9 @@ def run_sabia_json_call(
     )
 
     if not validacao_ok:
-        raise ValueError(f"Resposta inválida do Sabiá na etapa {etapa}: {erros_validacao}")
+        raise SabiaValidationError(etapa, erros_validacao)
 
-    return raw, audit
+    return raw, audit, objeto_pydantic
 
 
 def total_tokens_auditoria(chamadas: list[ChamadaAuditoria]) -> int | None:
@@ -857,6 +880,138 @@ def total_tokens_auditoria(chamadas: list[ChamadaAuditoria]) -> int | None:
                 total += value
                 found = True
     return total if found else None
+
+
+def status_ocr_schema_value(status_ocr: str) -> str:
+    normalized = strip_accents(status_ocr).strip().lower()
+    if any(marker in normalized for marker in ("degrad", "baixa", "ilegivel", "incerta", "sem ocr")):
+        return "degradado"
+    if any(marker in normalized for marker in ("parcial", "manual", "revisao")):
+        return "parcial"
+    return "ok"
+
+
+def build_metadados_redacao(
+    case_id: str,
+    aluno_nome: str,
+    aluno_escola: str,
+    tema: str,
+    status_tema: str,
+    status_ocr: str,
+    num_linhas: int,
+) -> MetadadosRedacao:
+    return MetadadosRedacao(
+        id_redacao=case_id,
+        aluno_nome=aluno_nome,
+        aluno_escola=aluno_escola,
+        tema=tema,
+        status_tema=status_tema,
+        status_ocr=status_ocr_schema_value(status_ocr),
+        num_linhas=num_linhas,
+    )
+
+
+def confianca_geral_pydantic(objetos: list[Any]) -> str:
+    ranks = {"baixa": 0, "media": 1, "alta": 2}
+    values: list[str] = []
+    for objeto in objetos:
+        value = getattr(objeto, "nivel_confianca", None)
+        if value is None:
+            continue
+        values.append(str(getattr(value, "value", value)).lower())
+    if not values:
+        return "baixa"
+    return min(values, key=lambda item: ranks.get(item, 0))
+
+
+def respostas_anuladas_pydantic(gate: GateAnulacaoSchema) -> dict[str, Any]:
+    nivel = str(getattr(gate.nivel_confianca, "value", gate.nivel_confianca))
+    comentario = "Redação anulada antes da avaliação por competência."
+    sugestao = "Resolver a condição de anulação antes de buscar pontuação por competência."
+    abordagem_c2 = "fuga_total" if gate.detalhes.fuga_total_tema else "completa"
+    tipo_textual_adequado = not gate.detalhes.nao_atendimento_tipo_textual
+    return {
+        "C1": RespostaC1(
+            competencia="C1",
+            nota=0,
+            comentario=comentario,
+            desvios_encontrados=[],
+            total_desvios=0,
+            reincidencia=False,
+            tipo_reincidente=None,
+            sugestao=sugestao,
+            nivel_confianca=nivel,
+        ),
+        "C2": RespostaC2(
+            competencia="C2",
+            nota=0,
+            comentario=comentario,
+            abordagem_tema=abordagem_c2,
+            tangenciamento_c2=False,
+            alerta_tema=None,
+            tipo_textual_adequado=tipo_textual_adequado,
+            repertorios_identificados=[],
+            sugestao=sugestao,
+            nivel_confianca=nivel,
+        ),
+        "C3": RespostaC3(
+            competencia="C3",
+            nota=0,
+            comentario=comentario,
+            projeto_de_texto="ausente",
+            tese_identificada=None,
+            autoria="ausente",
+            teto_por_tangenciamento_aplicado=False,
+            sugestao=sugestao,
+            nivel_confianca=nivel,
+        ),
+        "C4": RespostaC4(
+            competencia="C4",
+            nota=0,
+            comentario=comentario,
+            articulacao_interparagrafo="ausente",
+            diversidade_coesiva="baixa",
+            inadequacoes_identificadas=[],
+            sugestao=sugestao,
+            nivel_confianca=nivel,
+        ),
+        "C5": RespostaC5(
+            competencia="C5",
+            nota=0,
+            comentario=comentario,
+            elementos_identificados={},
+            total_elementos=0,
+            articulacao_com_texto=False,
+            respeita_direitos_humanos=True,
+            teto_por_tangenciamento_aplicado=False,
+            sugestao=sugestao,
+            nivel_confianca=nivel,
+        ),
+    }
+
+
+def build_resultado_pydantic(
+    metadados: MetadadosRedacao,
+    resultado: ResultadoCorrecao,
+    gate: GateAnulacaoSchema,
+    respostas: dict[str, Any],
+    alertas: list[str],
+) -> ResultadoCorrecaoSchema:
+    objetos = [respostas[competencia] for competencia in COMPETENCIAS] + [gate]
+    return ResultadoCorrecaoSchema(
+        metadados=metadados,
+        anulada=resultado.anulado,
+        gate=gate,
+        tangenciamento=resultado.tangenciamento,
+        c1=respostas["C1"],
+        c2=respostas["C2"],
+        c3=respostas["C3"],
+        c4=respostas["C4"],
+        c5=respostas["C5"],
+        nota_final=resultado.nota_final,
+        confianca_geral=confianca_geral_pydantic(objetos),
+        alertas=alertas,
+    )
 
 
 def raw_indica_tangenciamento_c2(raw: dict[str, Any]) -> bool:
@@ -938,7 +1093,7 @@ def corrigir_competencia(
     prompts_dir: Path,
     timeout: int,
     retries: int,
-) -> tuple[AvaliacaoCompetencia, dict[str, Any], ChamadaAuditoria]:
+) -> tuple[AvaliacaoCompetencia, dict[str, Any], ChamadaAuditoria, Any]:
     rubrica = load_competencia_prompt(competencia, prompts_dir)
     prompt = build_prompt(
         competencia,
@@ -950,7 +1105,7 @@ def corrigir_competencia(
         status_anulacao,
         "true" if tangenciamento_c2 else "false",
     )
-    raw, audit = run_sabia_json_call(
+    raw, audit, resposta_pydantic = run_sabia_json_call(
         api_key,
         model,
         prompt,
@@ -959,7 +1114,7 @@ def corrigir_competencia(
         timeout,
         retries,
     )
-    return normalize_avaliacao(raw, competencia), raw, audit
+    return normalize_avaliacao(raw, competencia), raw, audit, resposta_pydantic
 
 
 def corrigir_redacao(
@@ -977,10 +1132,11 @@ def corrigir_redacao(
     timeout: int,
     retries: int,
     print_progress: bool = False,
+    metadados: MetadadosRedacao | None = None,
 ) -> ResultadoCorrecao:
     started_at = time.monotonic()
     gate_prompt = build_gate_anulacao_prompt(tema, redacao, status_ocr, status_tema, num_linhas)
-    gate_raw, gate_audit = run_sabia_json_call(
+    gate_raw, gate_audit, gate_pydantic = run_sabia_json_call(
         api_key,
         model,
         gate_prompt,
@@ -996,7 +1152,7 @@ def corrigir_redacao(
         nota_final = sum(avaliacao.nota_corretor_x for avaliacao in avaliacoes)
         if print_progress:
             print(f"GATE: redação anulada ({', '.join(gate.motivos)})")
-        return ResultadoCorrecao(
+        resultado = ResultadoCorrecao(
             anulado=True,
             motivos_anulacao=gate.motivos,
             tangenciamento=False,
@@ -1007,6 +1163,18 @@ def corrigir_redacao(
             custo_tokens_total=total_tokens_auditoria(chamadas_auditoria),
             tempo_processamento_s=round(time.monotonic() - started_at, 3),
         )
+        if metadados is not None:
+            respostas = respostas_anuladas_pydantic(gate_pydantic)
+            alertas = build_alertas(status_tema, status_ocr, resultado).split("; ")
+            alertas = [alerta for alerta in alertas if alerta]
+            resultado.resultado_pydantic = build_resultado_pydantic(
+                metadados,
+                resultado,
+                gate_pydantic,
+                respostas,
+                alertas,
+            )
+        return resultado
 
     if print_progress:
         print("GATE: nenhuma condição de anulação total detectada.")
@@ -1014,8 +1182,9 @@ def corrigir_redacao(
     tangenciamento_c2_detectado = tangenciamento_c2_inicial
     avaliacoes_por_competencia: dict[str, AvaliacaoCompetencia] = {}
     raw_respostas: dict[str, dict[str, Any]] = {"gate": gate_raw}
+    respostas_pydantic: dict[str, Any] = {}
     for competencia in ORDEM_CORRECAO:
-        avaliacao, raw, audit = corrigir_competencia(
+        avaliacao, raw, audit, resposta_pydantic = corrigir_competencia(
             competencia,
             api_key,
             model,
@@ -1036,13 +1205,20 @@ def corrigir_redacao(
             tangenciamento_c2_detectado = True
         if tangenciamento_c2_detectado and competencia in COMPETENCIAS_COM_TETO_TANGENCIAMENTO:
             avaliacao = aplicar_teto_tangenciamento(avaliacao)
+            resposta_pydantic = resposta_pydantic.model_copy(
+                update={
+                    "nota": min(resposta_pydantic.nota, 40),
+                    "teto_por_tangenciamento_aplicado": True,
+                }
+            )
+        respostas_pydantic[competencia] = resposta_pydantic
         avaliacoes_por_competencia[competencia] = avaliacao
         if print_progress:
             print(f"{competencia}: {avaliacao.nota_corretor_x}/200 ({avaliacao.nivel_confianca})")
 
     avaliacoes = [avaliacoes_por_competencia[competencia] for competencia in COMPETENCIAS]
     nota_final = sum(avaliacao.nota_corretor_x for avaliacao in avaliacoes)
-    return ResultadoCorrecao(
+    resultado = ResultadoCorrecao(
         anulado=False,
         motivos_anulacao=[],
         tangenciamento=tangenciamento_c2_detectado,
@@ -1053,6 +1229,17 @@ def corrigir_redacao(
         custo_tokens_total=total_tokens_auditoria(chamadas_auditoria),
         tempo_processamento_s=round(time.monotonic() - started_at, 3),
     )
+    if metadados is not None:
+        alertas = build_alertas(status_tema, status_ocr, resultado).split("; ")
+        alertas = [alerta for alerta in alertas if alerta]
+        resultado.resultado_pydantic = build_resultado_pydantic(
+            metadados,
+            resultado,
+            gate_pydantic,
+            respostas_pydantic,
+            alertas,
+        )
+    return resultado
 
 
 def avaliacoes_por_competencia(avaliacoes: list[AvaliacaoCompetencia]) -> dict[str, AvaliacaoCompetencia]:
@@ -1673,6 +1860,17 @@ def main() -> int:
         print("Erro: defina SABIA_API_KEY no ambiente. Nunca coloque a chave no repositório.", file=sys.stderr)
         return 2
 
+    aluno_nome = args.aluno_nome or args.aluno_id
+    metadados = build_metadados_redacao(
+        args.case_id,
+        aluno_nome,
+        args.aluno_escola,
+        tema,
+        status_tema,
+        args.status_ocr,
+        num_linhas,
+    )
+
     resultado = corrigir_redacao(
         api_key=api_key,
         model=args.model,
@@ -1688,13 +1886,14 @@ def main() -> int:
         timeout=args.timeout,
         retries=args.retries,
         print_progress=True,
+        metadados=metadados,
     )
 
     fill_workbook(
         args.template_xlsx,
         args.out_xlsx,
         args.case_id,
-        args.aluno_nome or args.aluno_id,
+        aluno_nome,
         args.aluno_escola,
         tema,
         status_tema,

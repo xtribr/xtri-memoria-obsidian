@@ -139,7 +139,8 @@ As respostas do Sabiá são validadas com Pydantic v2 antes de entrar no Excel.
 
 - Schemas: [schemas/correcao.py](../schemas/correcao.py);
 - Política: resposta inválida interrompe a correção e lança erro, sem entrada silenciosa no Excel;
-- A aba `Auditoria` usa `validacao_pydantic_ok` e `erros_pydantic` para rastrear a validação das chamadas aceitas pelo fluxo.
+- A aba `Auditoria` usa `validacao_pydantic_ok` e `erros_pydantic` para rastrear a validação das chamadas aceitas pelo fluxo;
+- O script também monta um `ResultadoCorrecao` Pydantic consolidado após aplicar tetos por tangenciamento, validando novamente soma das competências, anulação, tangenciamento global e coerência entre C2, C3 e C5.
 
 Campos opcionais por caso:
 
