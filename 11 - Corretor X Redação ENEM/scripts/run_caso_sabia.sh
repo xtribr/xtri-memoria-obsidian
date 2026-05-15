@@ -50,6 +50,7 @@ STATUS_OCR_FILE="${INPUT_DIR}/status-ocr.txt"
 STATUS_TEMA_FILE="${INPUT_DIR}/status-tema.txt"
 STATUS_ANULACAO_FILE="${INPUT_DIR}/status-anulacao.txt"
 TANGENCIAMENTO_C2_FILE="${INPUT_DIR}/tangenciamento-c2.txt"
+NUM_LINHAS_FILE="${INPUT_DIR}/num-linhas.txt"
 OUT_XLSX="Cérebro do 1000/casos/exports/${CASE_ID}.xlsx"
 
 for required_file in "${TEMA_FILE}" "${REDACAO_FILE}" "${STATUS_OCR_FILE}"; do
@@ -86,6 +87,13 @@ if [[ -f "${TANGENCIAMENTO_C2_FILE}" ]]; then
   TANGENCIAMENTO_C2="$(tr '[:upper:]' '[:lower:]' < "${TANGENCIAMENTO_C2_FILE}" | tr -d '[:space:]')"
   if [[ "${TANGENCIAMENTO_C2}" == "true" || "${TANGENCIAMENTO_C2}" == "1" || "${TANGENCIAMENTO_C2}" == "sim" ]]; then
     set -- "$@" --tangenciamento-c2
+  fi
+fi
+
+if [[ -f "${NUM_LINHAS_FILE}" ]]; then
+  NUM_LINHAS="$(tr -d '[:space:]' < "${NUM_LINHAS_FILE}")"
+  if [[ "${NUM_LINHAS}" =~ ^[0-9]+$ ]]; then
+    set -- "$@" --num-linhas "${NUM_LINHAS}"
   fi
 fi
 

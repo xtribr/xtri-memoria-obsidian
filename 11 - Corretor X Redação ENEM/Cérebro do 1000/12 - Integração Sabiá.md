@@ -106,7 +106,11 @@ Comando manual, caso esteja dentro da pasta `11 - Corretor X Redação ENEM`:
 
 ## Como funciona
 
-O script faz uma chamada separada para cada competência:
+O script faz uma chamada 0 antes das competências para verificar anulação total pela Cartilha ENEM 2025.
+
+Se a chamada 0 retornar `anulado = true`, o script não executa C1-C5 e preenche o Excel com nota 0 nas cinco competências, registrando o motivo e a evidência da anulação.
+
+Se a chamada 0 retornar `anulado = false`, o script faz uma chamada separada para cada competência:
 
 - C1;
 - C2;
@@ -130,8 +134,9 @@ Campos opcionais por caso:
 - `status-tema.txt`: `verificado`, `inferido` ou `ausente`;
 - `status-anulacao.txt`: `nenhuma` ou uma condição de anulação;
 - `tangenciamento-c2.txt`: `true`, `1` ou `sim` para limitar C3 e C5 a 40 pontos.
+- `num-linhas.txt`: número de linhas manuscritas estimadas, quando houver contagem humana.
 
-Se `status-tema.txt` não existir, o script infere o status do tema a partir de `tema.txt`.
+Se `status-tema.txt` não existir, o script infere o status do tema a partir de `tema.txt`. Se `num-linhas.txt` não existir, o script estima a quantidade de linhas pela transcrição, usando quebras de linha e volume de palavras para evitar falso `texto_insuficiente` em transcrições digitadas por parágrafo. Quando houver contagem humana das linhas manuscritas, preferir `num-linhas.txt`.
 
 Depois, o script preenche o [Template - Entrega Excel Corretor X.xlsx](templates/Template%20-%20Entrega%20Excel%20Corretor%20X.xlsx).
 

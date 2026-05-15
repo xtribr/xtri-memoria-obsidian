@@ -81,7 +81,7 @@ Se o campo "status_anulacao" abaixo indicar qualquer condição abaixo, atribua 
 - parte_deliberadamente_desconectada
 - texto_em_lingua_estrangeira
 - texto_ilegivel
-- impropérios_ou_anulacao_proposital
+- improperios_ou_anulacao_proposital
 
 TANGENCIAMENTO (aplicável a C3 e C5)
 Se "tangenciamento_c2" = true, a nota desta competência não pode exceder 40 pontos, conforme Matriz de Referência ENEM.
@@ -111,6 +111,50 @@ REDAÇÃO DO ALUNO
 
 FORMATO DE SAÍDA (JSON válido, sem markdown, sem texto fora do JSON)
 {formato_json}
+"""
+
+PROMPT_GATE_ANULACAO = """Você é o Corretor X da XTRI EdTECH. Sua tarefa é verificar se a redação abaixo apresenta alguma condição de anulação total, ANTES da avaliação por competência.
+
+CONDIÇÕES DE ANULAÇÃO (Cartilha ENEM 2025, p. 7-8)
+1. fuga_total_tema: nem o assunto amplo é abordado
+2. nao_atendimento_tipo_textual: texto não é dissertativo-argumentativo (é poema, narração pura, carta, lista, etc.)
+3. texto_insuficiente: até 7 linhas manuscritas (ou 10 em Braille)
+4. parte_deliberadamente_desconectada: bilhetes para a banca, orações, mensagens políticas/religiosas desarticuladas, trechos de música/poema sem função argumentativa
+5. texto_em_lingua_estrangeira: predominantemente ou integralmente em outra língua
+6. texto_ilegivel: impossível de ser lido
+7. improperios_ou_anulacao_proposital: ofensas, desenhos, formas propositais de anulação
+
+REGRAS
+- Avalie cada condição independentemente
+- Se NENHUMA for true, retorne anulado = false e prossiga normalmente
+- Se ALGUMA for true, retorne anulado = true e indique qual
+- Para tangenciamento (não é anulação total), avalie em C2
+
+CONTEXTO
+- Tema oficial: {tema}
+- Status do tema: {status_tema}
+- Status OCR: {status_ocr}
+- Número de linhas estimadas: {num_linhas}
+
+REDAÇÃO DO ALUNO
+{redacao}
+
+FORMATO DE SAÍDA (JSON válido, sem markdown)
+{{
+  "anulado": false,
+  "motivos": [],
+  "detalhes": {{
+    "fuga_total_tema": false,
+    "nao_atendimento_tipo_textual": false,
+    "texto_insuficiente": false,
+    "parte_deliberadamente_desconectada": false,
+    "texto_em_lingua_estrangeira": false,
+    "texto_ilegivel": false,
+    "improperios_ou_anulacao_proposital": false
+  }},
+  "evidencia": "trecho ou descrição que justifica a anulação, se houver",
+  "nivel_confianca": "alta|media|baixa"
+}}
 """
 
 FORMATO_JSON = """{{
@@ -214,6 +258,14 @@ class AvaliacaoCompetencia:
     nivel_confianca: str
 
 
+@dataclass
+class GateAnulacao:
+    anulado: bool
+    motivos: list[str]
+    evidencia: str
+    nivel_confianca: str
+
+
 def read_text(path: Path) -> str:
     text = path.read_text(encoding="utf-8").strip()
     if not text:
@@ -253,6 +305,15 @@ def infer_status_tema(tema: str) -> str:
     if any(marker in normalized for marker in ("inferido", "inferencia", "aparenta tratar")):
         return "inferido"
     return "verificado"
+
+
+def estimate_num_linhas(redacao: str) -> int:
+    linhas = [linha for linha in redacao.splitlines() if linha.strip()]
+    palavras = redacao.split()
+    if not palavras:
+        return 0
+    estimativa_por_palavras = max(1, round(len(palavras) / 12))
+    return max(len(linhas), estimativa_por_palavras)
 
 
 def normalize_confidence(value: str) -> str:
@@ -402,6 +463,22 @@ def format_proposta_intervencao(raw: dict[str, Any]) -> str:
     return " | ".join(evidencias)
 
 
+def build_gate_anulacao_prompt(
+    tema: str,
+    redacao: str,
+    status_ocr: str,
+    status_tema: str,
+    num_linhas: int,
+) -> str:
+    return PROMPT_GATE_ANULACAO.format(
+        tema=tema,
+        status_tema=status_tema,
+        status_ocr=status_ocr,
+        num_linhas=num_linhas,
+        redacao=redacao,
+    ).strip()
+
+
 def build_prompt(
     competencia: str,
     tema: str,
@@ -479,6 +556,48 @@ def normalize_avaliacao(raw: dict[str, Any], competencia: str) -> AvaliacaoCompe
     )
 
 
+def normalize_gate_anulacao(raw: dict[str, Any]) -> GateAnulacao:
+    detalhes = raw.get("detalhes")
+    motivos = raw.get("motivos")
+    if not isinstance(motivos, list):
+        motivos = []
+    motivos = [str(motivo).strip() for motivo in motivos if str(motivo).strip()]
+
+    if isinstance(detalhes, dict):
+        motivos_por_detalhe = [
+            str(motivo)
+            for motivo, ativo in detalhes.items()
+            if ativo is True and str(motivo) not in motivos
+        ]
+        motivos.extend(motivos_por_detalhe)
+
+    anulado = bool(raw.get("anulado")) or bool(motivos)
+    return GateAnulacao(
+        anulado=anulado,
+        motivos=motivos,
+        evidencia=str(raw.get("evidencia", "")).strip(),
+        nivel_confianca=normalize_confidence(str(raw.get("nivel_confianca", ""))),
+    )
+
+
+def avaliacoes_por_anulacao(gate: GateAnulacao) -> list[AvaliacaoCompetencia]:
+    motivos = ", ".join(gate.motivos) if gate.motivos else "condição de anulação"
+    comentario = f"Redação anulada antes da avaliação por competência. Motivo(s): {motivos}."
+    evidencia = gate.evidencia or "Gate de anulação indicou anulação total."
+    sugestao = "Resolver a condição de anulação antes de buscar pontuação por competência."
+    return [
+        AvaliacaoCompetencia(
+            competencia=competencia,
+            nota_corretor_x=0,
+            comentario_do_erro=comentario,
+            evidencia_no_texto=evidencia,
+            sugestao_de_melhoria=sugestao,
+            nivel_confianca=gate.nivel_confianca,
+        )
+        for competencia in COMPETENCIAS
+    ]
+
+
 def fill_workbook(
     template_path: Path,
     output_path: Path,
@@ -517,6 +636,7 @@ def main() -> int:
     parser.add_argument("--status-tema", choices=["verificado", "inferido", "ausente"])
     parser.add_argument("--status-anulacao", default="nenhuma")
     parser.add_argument("--tangenciamento-c2", action="store_true")
+    parser.add_argument("--num-linhas", type=int)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--timeout", default=90, type=int)
     parser.add_argument("--retries", default=1, type=int)
@@ -542,6 +662,7 @@ def main() -> int:
     tema = read_text(args.tema_file)
     redacao = read_text(args.redacao_file)
     status_tema = args.status_tema or infer_status_tema(tema)
+    num_linhas = args.num_linhas if args.num_linhas is not None else estimate_num_linhas(redacao)
     tangenciamento_c2_detectado = args.tangenciamento_c2
 
     if args.dry_run:
@@ -549,6 +670,7 @@ def main() -> int:
         print(f"Tema: {len(tema)} caracteres")
         print(f"Status do tema: {status_tema}")
         print(f"Status de anulação: {args.status_anulacao}")
+        print(f"Número de linhas estimadas: {num_linhas}")
         print(f"Tangenciamento C2: {'true' if tangenciamento_c2_detectado else 'false'}")
         print(f"Redação: {len(redacao)} caracteres")
         print("Dry-run: nenhuma chamada ao Sabiá foi feita.")
@@ -558,6 +680,27 @@ def main() -> int:
     if not api_key:
         print("Erro: defina SABIA_API_KEY no ambiente. Nunca coloque a chave no repositório.", file=sys.stderr)
         return 2
+
+    gate_prompt = build_gate_anulacao_prompt(tema, redacao, args.status_ocr, status_tema, num_linhas)
+    gate_raw = extract_json(call_sabia(api_key, args.model, gate_prompt, args.timeout, args.retries))
+    gate = normalize_gate_anulacao(gate_raw)
+    if gate.anulado:
+        avaliacoes = avaliacoes_por_anulacao(gate)
+        fill_workbook(
+            args.template_xlsx,
+            args.out_xlsx,
+            args.case_id,
+            args.aluno_id,
+            tema,
+            args.status_ocr,
+            avaliacoes,
+        )
+        print(f"GATE: redação anulada ({', '.join(gate.motivos)})")
+        print(f"Excel salvo em: {args.out_xlsx}")
+        return 0
+
+    status_anulacao = "nenhuma"
+    print("GATE: nenhuma condição de anulação total detectada.")
 
     avaliacoes: list[AvaliacaoCompetencia] = []
     for competencia in COMPETENCIAS:
@@ -569,7 +712,7 @@ def main() -> int:
             args.status_ocr,
             rubrica,
             status_tema,
-            args.status_anulacao,
+            status_anulacao,
             "true" if tangenciamento_c2_detectado else "false",
         )
         content = call_sabia(api_key, args.model, prompt, args.timeout, args.retries)
