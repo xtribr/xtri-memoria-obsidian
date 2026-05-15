@@ -142,6 +142,16 @@ As respostas do Sabiá são validadas com Pydantic v2 antes de entrar no Excel.
 - A aba `Auditoria` usa `validacao_pydantic_ok` e `erros_pydantic` para rastrear a validação das chamadas aceitas pelo fluxo;
 - O script também monta um `ResultadoCorrecao` Pydantic consolidado após aplicar tetos por tangenciamento, validando novamente soma das competências, anulação, tangenciamento global e coerência entre C2, C3 e C5.
 
+## Recuperação de Erros de Validação
+
+Quando uma resposta do Sabiá falha no Pydantic, o script aplica esta política:
+
+1. `re_prompt_com_erro`: envia de volta o erro Pydantic e o JSON rejeitado, pedindo apenas um JSON corrigido;
+2. `fallback_modelo_maior`: repete a correção com o modelo configurado em `--fallback-model` ou na variável `SABIA_FALLBACK_MODEL`;
+3. `marcar_revisao_humana`: se ainda falhar, o Excel não é gerado e o caso recebe um arquivo `*.revisao-humana.txt` com etapa, erro e IDs das chamadas auditadas.
+
+As tentativas inválidas também entram na aba `Auditoria` quando uma tentativa posterior consegue recuperar a chamada. Se não houver recuperação, a correção é bloqueada para evitar devolutiva incoerente.
+
 Campos opcionais por caso:
 
 - `status-tema.txt`: `verificado`, `inferido` ou `ausente`;

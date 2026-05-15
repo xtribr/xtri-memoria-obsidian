@@ -55,6 +55,16 @@ from schemas.correcao import (
 API_URL = "https://chat.maritaca.ai/api/chat/completions"
 DEFAULT_MODEL = "sabia-4"
 DEFAULT_PROMPT_VERSION = "v1.0"
+DEFAULT_FALLBACK_MODEL = os.environ.get("SABIA_FALLBACK_MODEL", DEFAULT_MODEL)
+REVISAO_HUMANA_EXIT_CODE = 3
+RETRY_POLICY = {
+    "tentativas_max": 2,
+    "estrategias": [
+        "re_prompt_com_erro",
+        "fallback_modelo_maior",
+        "marcar_revisao_humana",
+    ],
+}
 VALID_SCORES = {0, 40, 80, 120, 160, 200}
 COMPETENCIAS = ["C1", "C2", "C3", "C4", "C5"]
 ORDEM_CORRECAO = ["C2", "C1", "C3", "C4", "C5"]
@@ -409,10 +419,28 @@ class ChamadaAuditoria:
 class SabiaValidationError(ValueError):
     """Erro lançado quando a resposta do Sabiá falha nos schemas Pydantic."""
 
-    def __init__(self, etapa: str, erro: str) -> None:
+    def __init__(
+        self,
+        etapa: str,
+        erro: str,
+        auditoria: ChamadaAuditoria | None = None,
+        raw: dict[str, Any] | None = None,
+    ) -> None:
         self.etapa = etapa
         self.erro = erro
+        self.auditoria = auditoria
+        self.raw = raw or {}
         super().__init__(f"Resposta inválida do Sabiá na etapa {etapa}: {erro}")
+
+
+class SabiaHumanReviewRequired(RuntimeError):
+    """Erro final quando a política de recuperação esgota as tentativas."""
+
+    def __init__(self, etapa: str, erro: str, chamadas_auditoria: list[ChamadaAuditoria]) -> None:
+        self.etapa = etapa
+        self.erro = erro
+        self.chamadas_auditoria = chamadas_auditoria
+        super().__init__(f"Revisão humana recomendada na etapa {etapa}: {erro}")
 
 
 @dataclass
@@ -767,6 +795,28 @@ def call_sabia(api_key: str, model: str, prompt: str, timeout: int, retries: int
     raise RuntimeError(f"Falha na chamada ao Sabiá: {last_error}")
 
 
+def build_reprompt_with_validation_error(
+    original_prompt: str,
+    etapa: str,
+    erro_validacao: str,
+    json_resposta_bruto: str,
+) -> str:
+    return f"""{original_prompt}
+
+CORREÇÃO OBRIGATÓRIA DO JSON
+A resposta anterior da etapa {etapa} falhou na validação Pydantic do Corretor X.
+
+Erro de validação:
+{erro_validacao}
+
+JSON anterior rejeitado:
+{json_resposta_bruto}
+
+Retorne novamente SOMENTE um JSON válido, sem markdown e sem texto fora do JSON.
+Mantenha a avaliação pedagógica, mas corrija estritamente os campos, tipos e coerências apontados pelo erro.
+""".strip()
+
+
 def normalize_avaliacao(raw: dict[str, Any], competencia: str) -> AvaliacaoCompetencia:
     nota = int(raw.get("nota_corretor_x", raw.get("nota")))
     if nota not in VALID_SCORES:
@@ -825,7 +875,7 @@ def validar_json_etapa(raw: dict[str, Any], etapa: str) -> tuple[Any | None, str
         return None, f"{type(exc).__name__}: {exc}"
 
 
-def run_sabia_json_call(
+def run_sabia_json_call_once(
     api_key: str,
     model: str,
     prompt: str,
@@ -866,9 +916,61 @@ def run_sabia_json_call(
     )
 
     if not validacao_ok:
-        raise SabiaValidationError(etapa, erros_validacao)
+        raise SabiaValidationError(etapa, erros_validacao, audit, raw)
 
     return raw, audit, objeto_pydantic
+
+
+def run_sabia_json_call(
+    api_key: str,
+    model: str,
+    fallback_model: str,
+    prompt: str,
+    etapa: str,
+    prompt_version: str,
+    timeout: int,
+    retries: int,
+) -> tuple[dict[str, Any], list[ChamadaAuditoria], Any]:
+    chamadas: list[ChamadaAuditoria] = []
+    last_error = ""
+    last_json = ""
+
+    recovery_strategies = [
+        strategy
+        for strategy in RETRY_POLICY["estrategias"]
+        if strategy != "marcar_revisao_humana"
+    ][: int(RETRY_POLICY["tentativas_max"])]
+    attempts: list[tuple[str, str, str]] = [("chamada_inicial", model, prompt)]
+    for strategy in recovery_strategies:
+        attempt_model = (fallback_model or model) if strategy == "fallback_modelo_maior" else model
+        attempts.append((strategy, attempt_model, ""))
+
+    for index, (strategy, attempt_model, attempt_prompt) in enumerate(attempts):
+        if index > 0:
+            attempt_prompt = build_reprompt_with_validation_error(prompt, etapa, last_error, last_json)
+
+        attempt_prompt_version = prompt_version if strategy == "chamada_inicial" else f"{prompt_version}:{strategy}"
+        try:
+            raw, audit, objeto_pydantic = run_sabia_json_call_once(
+                api_key,
+                attempt_model,
+                attempt_prompt,
+                etapa,
+                attempt_prompt_version,
+                timeout,
+                retries,
+            )
+            chamadas.append(audit)
+            return raw, chamadas, objeto_pydantic
+        except SabiaValidationError as exc:
+            last_error = exc.erro
+            if exc.auditoria is not None:
+                last_json = exc.auditoria.json_resposta_bruto
+                chamadas.append(exc.auditoria)
+            else:
+                last_json = ""
+
+    raise SabiaHumanReviewRequired(etapa, last_error, chamadas)
 
 
 def total_tokens_auditoria(chamadas: list[ChamadaAuditoria]) -> int | None:
@@ -1083,6 +1185,7 @@ def corrigir_competencia(
     competencia: str,
     api_key: str,
     model: str,
+    fallback_model: str,
     prompt_version: str,
     tema: str,
     redacao: str,
@@ -1093,7 +1196,7 @@ def corrigir_competencia(
     prompts_dir: Path,
     timeout: int,
     retries: int,
-) -> tuple[AvaliacaoCompetencia, dict[str, Any], ChamadaAuditoria, Any]:
+) -> tuple[AvaliacaoCompetencia, dict[str, Any], list[ChamadaAuditoria], Any]:
     rubrica = load_competencia_prompt(competencia, prompts_dir)
     prompt = build_prompt(
         competencia,
@@ -1105,21 +1208,23 @@ def corrigir_competencia(
         status_anulacao,
         "true" if tangenciamento_c2 else "false",
     )
-    raw, audit, resposta_pydantic = run_sabia_json_call(
+    raw, audits, resposta_pydantic = run_sabia_json_call(
         api_key,
         model,
+        fallback_model,
         prompt,
         competencia.lower(),
         prompt_version,
         timeout,
         retries,
     )
-    return normalize_avaliacao(raw, competencia), raw, audit, resposta_pydantic
+    return normalize_avaliacao(raw, competencia), raw, audits, resposta_pydantic
 
 
 def corrigir_redacao(
     api_key: str,
     model: str,
+    fallback_model: str,
     prompt_version: str,
     tema: str,
     redacao: str,
@@ -1136,16 +1241,17 @@ def corrigir_redacao(
 ) -> ResultadoCorrecao:
     started_at = time.monotonic()
     gate_prompt = build_gate_anulacao_prompt(tema, redacao, status_ocr, status_tema, num_linhas)
-    gate_raw, gate_audit, gate_pydantic = run_sabia_json_call(
+    gate_raw, gate_audits, gate_pydantic = run_sabia_json_call(
         api_key,
         model,
+        fallback_model,
         gate_prompt,
         "gate",
         prompt_version,
         timeout,
         retries,
     )
-    chamadas_auditoria = [gate_audit]
+    chamadas_auditoria = list(gate_audits)
     gate = normalize_gate_anulacao(gate_raw)
     if gate.anulado:
         avaliacoes = avaliacoes_por_anulacao(gate)
@@ -1184,10 +1290,11 @@ def corrigir_redacao(
     raw_respostas: dict[str, dict[str, Any]] = {"gate": gate_raw}
     respostas_pydantic: dict[str, Any] = {}
     for competencia in ORDEM_CORRECAO:
-        avaliacao, raw, audit, resposta_pydantic = corrigir_competencia(
+        avaliacao, raw, audits, resposta_pydantic = corrigir_competencia(
             competencia,
             api_key,
             model,
+            fallback_model,
             prompt_version,
             tema,
             redacao,
@@ -1199,7 +1306,7 @@ def corrigir_redacao(
             timeout,
             retries,
         )
-        chamadas_auditoria.append(audit)
+        chamadas_auditoria.extend(audits)
         raw_respostas[competencia] = raw
         if competencia == "C2" and raw_indica_tangenciamento_c2(raw):
             tangenciamento_c2_detectado = True
@@ -1802,6 +1909,39 @@ def fill_workbook(
     wb.save(output_path)
 
 
+def write_revisao_humana_marker(
+    output_path: Path,
+    case_id: str,
+    exc: SabiaHumanReviewRequired,
+) -> Path:
+    marker_path = output_path.with_suffix(".revisao-humana.txt")
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "revisao_humana_recomendada=true",
+        f"id_redacao={case_id}",
+        f"etapa={exc.etapa}",
+        f"erro={exc.erro}",
+        f"tentativas={len(exc.chamadas_auditoria)}",
+        "",
+        "auditoria_tentativas:",
+    ]
+    for chamada in exc.chamadas_auditoria:
+        lines.append(
+            " | ".join(
+                [
+                    f"id_chamada={chamada.id_chamada}",
+                    f"etapa={chamada.etapa}",
+                    f"modelo={chamada.modelo}",
+                    f"prompt_versao={chamada.prompt_versao}",
+                    f"validacao_pydantic_ok={chamada.validacao_pydantic_ok}",
+                    f"erro={chamada.erros_pydantic}",
+                ]
+            )
+        )
+    marker_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return marker_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Corrige redação ENEM com Sabiá e preenche Excel.")
     parser.add_argument("--tema-file", required=True, type=Path)
@@ -1816,6 +1956,7 @@ def main() -> int:
     parser.add_argument("--tangenciamento-c2", action="store_true")
     parser.add_argument("--num-linhas", type=int)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--fallback-model", default=DEFAULT_FALLBACK_MODEL)
     parser.add_argument("--prompt-version", default=DEFAULT_PROMPT_VERSION)
     parser.add_argument("--timeout", default=90, type=int)
     parser.add_argument("--retries", default=1, type=int)
@@ -1871,23 +2012,34 @@ def main() -> int:
         num_linhas,
     )
 
-    resultado = corrigir_redacao(
-        api_key=api_key,
-        model=args.model,
-        prompt_version=args.prompt_version,
-        tema=tema,
-        redacao=redacao,
-        status_tema=status_tema,
-        status_ocr=args.status_ocr,
-        status_anulacao="nenhuma",
-        tangenciamento_c2_inicial=tangenciamento_c2_detectado,
-        num_linhas=num_linhas,
-        prompts_dir=args.brain_prompts_dir,
-        timeout=args.timeout,
-        retries=args.retries,
-        print_progress=True,
-        metadados=metadados,
-    )
+    try:
+        resultado = corrigir_redacao(
+            api_key=api_key,
+            model=args.model,
+            fallback_model=args.fallback_model,
+            prompt_version=args.prompt_version,
+            tema=tema,
+            redacao=redacao,
+            status_tema=status_tema,
+            status_ocr=args.status_ocr,
+            status_anulacao=args.status_anulacao,
+            tangenciamento_c2_inicial=tangenciamento_c2_detectado,
+            num_linhas=num_linhas,
+            prompts_dir=args.brain_prompts_dir,
+            timeout=args.timeout,
+            retries=args.retries,
+            print_progress=True,
+            metadados=metadados,
+        )
+    except SabiaHumanReviewRequired as exc:
+        marker_path = write_revisao_humana_marker(args.out_xlsx, args.case_id, exc)
+        print(
+            f"Revisão humana recomendada: etapa {exc.etapa} falhou após "
+            f"{len(exc.chamadas_auditoria)} tentativa(s).",
+            file=sys.stderr,
+        )
+        print(f"Marcador salvo em: {marker_path}", file=sys.stderr)
+        return REVISAO_HUMANA_EXIT_CODE
 
     fill_workbook(
         args.template_xlsx,
