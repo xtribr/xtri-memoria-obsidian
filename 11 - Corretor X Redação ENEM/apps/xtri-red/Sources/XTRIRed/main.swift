@@ -677,6 +677,26 @@ struct ContentView: View {
             }
             .padding([.horizontal, .top])
 
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Importação")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Pasta") {
+                        model.importFolder()
+                    }
+                    Button("Arquivos") {
+                        model.importFiles()
+                    }
+                }
+                .buttonStyle(.bordered)
+                Text("Uma pasta pode ter centenas de arquivos, um por aluno.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal)
+
             List(selection: $model.selectedCaseID) {
                 Section("Casos") {
                     ForEach(model.cases) { item in

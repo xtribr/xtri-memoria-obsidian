@@ -23,7 +23,7 @@ Status em 2026-05-15: o app possui importação local para lote e arquivos avuls
 Fluxo recomendado para 500 redações:
 
 1. Organizar uma pasta com um arquivo por aluno.
-2. Clicar em `Importar Pasta`.
+2. Clicar em `Importar Pasta` na barra superior ou em `Pasta` na seção `Importação` da barra lateral.
 3. Informar o tema oficial comum do lote.
 4. O XTRI-RED cria automaticamente `entradas/caso-*`.
 
