@@ -247,3 +247,21 @@ Decisão:
 - OCR de imagem manuscrita passa a ser tratado como rascunho de transcrição.
 - Status `parcial`, `ocr_degradado`, `aguardando_ocr` e `revisao_humana` bloqueiam `Dry-run` e `Corrigir`.
 - O app agora permite abrir a imagem original, editar a transcrição e liberar o caso apenas ao salvar a transcrição revisada com status `ok`.
+
+## [2026-05-15] change | OpenAI Vision como camada opcional de transcrição
+
+Adicionada camada opcional de OCR por visão antes do PaddleOCR no XTRI-RED.
+
+Nota principal:
+
+- [[13 - XTRI-RED App Mac]]
+
+Arquivos:
+
+- `scripts/ocr_openai_vision.py`
+
+Comportamento:
+
+- Se `OPENAI_API_KEY` estiver disponível no Keychain ou no ambiente, o app tenta transcrição literal por OpenAI Vision.
+- A transcrição é salva em `redacao-openai-vision.txt` e os metadados em `ocr-openai-vision.json`.
+- Mesmo quando a transcrição vem preenchida, o status permanece `parcial` e a correção continua bloqueada até revisão humana.

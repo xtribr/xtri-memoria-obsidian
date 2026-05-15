@@ -118,7 +118,7 @@ Observação: esta etapa cria um app clicável assinado ad-hoc para uso local. D
 
 Regra operacional atual: OCR de imagem manuscrita nunca libera correção automaticamente.
 
-O PaddleOCR/Apple Vision pode preencher `redacao.txt` como rascunho, mas enquanto `status-ocr.txt` estiver como `parcial`, `ocr_degradado`, `aguardando_ocr` ou `revisao_humana`, o app mantém `Corrigir` bloqueado.
+O OpenAI Vision, PaddleOCR ou Apple Vision podem preencher `redacao.txt` como rascunho, mas enquanto `status-ocr.txt` estiver como `parcial`, `ocr_degradado`, `aguardando_ocr` ou `revisao_humana`, o app mantém `Corrigir` bloqueado.
 
 Fluxo correto:
 
@@ -126,6 +126,20 @@ Fluxo correto:
 2. revisar ou refazer a transcrição no editor;
 3. clicar em `Salvar transcrição`;
 4. corrigir apenas depois do status `ok`.
+
+Camadas de OCR:
+
+1. OpenAI Vision, se `OPENAI_API_KEY` estiver no Keychain ou no ambiente;
+2. PaddleOCR local, se instalado no `.venv`;
+3. Apple Vision local como fallback.
+
+Arquivos de auditoria:
+
+- `redacao-openai-vision.txt`
+- `ocr-openai-vision.json`
+- `redacao-paddleocr.txt`
+- `ocr-paddle.json`
+- `redacao-apple-vision.txt`
 
 ## Regra de segurança
 

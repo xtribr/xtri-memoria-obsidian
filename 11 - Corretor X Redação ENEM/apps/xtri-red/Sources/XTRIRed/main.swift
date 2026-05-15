@@ -101,6 +101,32 @@ struct PaddleOCRPayload: Decodable {
     }
 }
 
+struct OpenAIVisionOCRPayload: Decodable {
+    let ok: Bool
+    let engine: String?
+    let model: String?
+    let text: String
+    let characterCount: Int
+    let lineCount: Int
+    let uncertainSpans: [String]?
+    let notes: String?
+    let status: String?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case engine
+        case model
+        case text
+        case characterCount = "character_count"
+        case lineCount = "line_count"
+        case uncertainSpans = "uncertain_spans"
+        case notes
+        case status
+        case error
+    }
+}
+
 enum KeychainError: LocalizedError {
     case unexpectedStatus(OSStatus)
     case invalidData
@@ -118,12 +144,21 @@ enum KeychainError: LocalizedError {
 enum KeychainStore {
     private static let service = "online.xtri.red"
     private static let apiKeyAccount = "SABIA_API_KEY"
+    private static let openAIAPIKeyAccount = "OPENAI_API_KEY"
 
     static func readAPIKey() throws -> String? {
+        try readPassword(account: apiKeyAccount)
+    }
+
+    static func readOpenAIAPIKey() throws -> String? {
+        try readPassword(account: openAIAPIKeyAccount)
+    }
+
+    private static func readPassword(account: String) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -754,6 +789,24 @@ enum CaseImporter {
     }
 
     private static func runImageOCR(originalURL: URL, caseURL: URL, caseID: String) throws -> OCRResult {
+        if let openAIResult = try? runOpenAIVisionOCR(originalURL: originalURL, caseURL: caseURL),
+           openAIResult.ok,
+           openAIResult.characterCount >= 100,
+           !openAIResult.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let status = openAIResult.status ?? "parcial: transcricao automatica por OpenAI Vision; revisar literalmente antes de corrigir."
+            try write(openAIResult.text, to: caseURL.appendingPathComponent("redacao.txt"))
+            try write(openAIResult.text, to: caseURL.appendingPathComponent("redacao-openai-vision.txt"))
+            try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
+            try write(openAIVisionOCRMetadata(openAIResult), to: caseURL.appendingPathComponent("ocr-openai-vision.json"))
+            return OCRResult(
+                caseID: caseID,
+                characterCount: openAIResult.characterCount,
+                lineCount: openAIResult.lineCount,
+                status: status,
+                readyForCorrection: isCorrectionReady(essayText: openAIResult.text, statusOCR: status)
+            )
+        }
+
         if let paddleResult = try? runPaddleOCR(originalURL: originalURL, caseURL: caseURL),
            paddleResult.ok,
            paddleResult.characterCount >= 500,
@@ -797,6 +850,59 @@ enum CaseImporter {
             status: status,
             readyForCorrection: isCorrectionReady(essayText: text, statusOCR: status)
         )
+    }
+
+    private static func runOpenAIVisionOCR(originalURL: URL, caseURL: URL) throws -> OpenAIVisionOCRPayload? {
+        let vaultURL = caseURL.deletingLastPathComponent().deletingLastPathComponent()
+        let projectRoot = vaultURL.deletingLastPathComponent().deletingLastPathComponent()
+        let pythonURL = projectRoot.appendingPathComponent(".venv/bin/python")
+        let scriptURL = vaultURL.appendingPathComponent("scripts/ocr_openai_vision.py")
+
+        guard FileManager.default.isExecutableFile(atPath: pythonURL.path),
+              FileManager.default.fileExists(atPath: scriptURL.path) else {
+            return nil
+        }
+
+        var environment = ProcessInfo.processInfo.environment
+        if (environment["OPENAI_API_KEY"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let openAIKey = try? KeychainStore.readOpenAIAPIKey(),
+                  !openAIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            environment["OPENAI_API_KEY"] = openAIKey
+        }
+
+        let process = Process()
+        process.executableURL = pythonURL
+        process.arguments = [scriptURL.path, "--image", originalURL.path]
+        process.currentDirectoryURL = vaultURL
+        process.environment = environment
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = FileHandle.nullDevice
+
+        try process.run()
+        process.waitUntilExit()
+
+        let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        guard !output.isEmpty else { return nil }
+
+        return try JSONDecoder().decode(OpenAIVisionOCRPayload.self, from: output)
+    }
+
+    private static func openAIVisionOCRMetadata(_ payload: OpenAIVisionOCRPayload) throws -> String {
+        let data = try JSONEncoder().encode([
+            "engine": payload.engine ?? "openai_vision",
+            "model": payload.model ?? "",
+            "character_count": "\(payload.characterCount)",
+            "line_count": "\(payload.lineCount)",
+            "uncertain_spans": (payload.uncertainSpans ?? []).joined(separator: " | "),
+            "notes": payload.notes ?? "",
+            "status": payload.status ?? "",
+            "error": payload.error ?? "",
+        ])
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
 
     private static func runPaddleOCR(originalURL: URL, caseURL: URL) throws -> PaddleOCRPayload? {

@@ -42,7 +42,7 @@ Observação de interface: os prompts e rubricas continuam no vault e são usado
 
 Use `Importar Pasta` quando houver um lote com um arquivo por aluno. Use `Importar Arquivo` para casos avulsos ou seleção manual de poucos arquivos. Os botões também aparecem na barra lateral como `Pasta` e `Arquivos`.
 
-Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR local com PaddleOCR (`lang=pt`) quando as dependências estão instaladas; se PaddleOCR falhar ou não estiver disponível, o app cai para Apple Vision. Quando há texto extraído por OCR, o caso fica marcado como `parcial` e não libera `Corrigir` até a transcrição ser revisada e salva no app. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição revisada.
+Arquivos `.txt` são importados como transcrição pronta e ficam liberados para correção. Imagens `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` tentam OCR em camadas: OpenAI Vision quando `OPENAI_API_KEY` estiver disponível, PaddleOCR (`lang=pt`) quando as dependências estiverem instaladas, e Apple Vision como fallback local. Quando há texto extraído por OCR, o caso fica marcado como `parcial` e não libera `Corrigir` até a transcrição ser revisada e salva no app. PDFs são copiados como `original.pdf` e continuam marcados como `aguardando_ocr` até existir uma transcrição revisada.
 
 Casos de imagem podem ser processados ou reprocessados pelo botão `Rodar OCR`/`Reprocessar OCR`, exibido no painel do caso quando há `original.ext` compatível.
 
@@ -54,6 +54,14 @@ Para instalar o OCR opcional com PaddleOCR:
 cd "/Volumes/KINGSTON 2/apps/apps/corretor de redação"
 .venv/bin/python -m pip install -r "corretor x/11 - Corretor X Redação ENEM/scripts/requirements-ocr.txt"
 ```
+
+Para habilitar a camada OpenAI Vision no app aberto pelo Finder, salve a chave no mesmo serviço do Keychain:
+
+```bash
+security add-generic-password -U -s "online.xtri.red" -a "OPENAI_API_KEY" -w "SUA_CHAVE_OPENAI"
+```
+
+Também é possível iniciar pelo terminal com `OPENAI_API_KEY` no ambiente. A chave não deve ser salva em arquivo do projeto.
 
 Para cada arquivo aceito, o app cria:
 
