@@ -1241,6 +1241,35 @@ private func isOKStatus(_ statusOCR: String) -> Bool {
         .hasPrefix("ok:")
 }
 
+private func isUnsafeOCRStatus(_ statusOCR: String) -> Bool {
+    let status = statusOCR
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .folding(options: .diacriticInsensitive, locale: .current)
+        .lowercased()
+    if status.isEmpty || status.hasPrefix("ok:") {
+        return false
+    }
+    let markers = [
+        "aguardando_ocr",
+        "ocr_degradado",
+        "degradado",
+        "parcial",
+        "ocr seguro",
+        "baixa",
+        "ilegivel",
+        "incerta",
+        "manual assistida",
+        "sem ocr",
+        "revisao",
+        "revisar",
+        "pendente",
+        "nao valid",
+        "trecho critico",
+        "safe_for_correction=false"
+    ]
+    return markers.contains { status.contains($0) }
+}
+
 private func isCorrectionReady(essayText: String, statusOCR: String) -> Bool {
     guard !essayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
 
@@ -1407,7 +1436,7 @@ struct ContentView: View {
                         model.runSelectedCase(dryRun: true)
                     }
                     .disabled(model.isRunning || !item.isReadyForCorrection)
-                    Button("Corrigir") {
+                    Button(isUnsafeOCRStatus(item.statusOCR) ? "Relatório OCR" : "Corrigir") {
                         model.runSelectedCase(dryRun: false)
                     }
                     .disabled(!model.apiKeyAvailable || model.isRunning || !item.isReadyForCorrection)
@@ -1685,6 +1714,15 @@ struct ContentView: View {
     }
 
     private func caseStatusLabel(_ item: EssayCase) -> String {
+        if item.correction?.bloqueadaPorOCR == true {
+            return "OCR inseguro - sem nota"
+        }
+        if item.correction?.notaFinal != nil {
+            return "Correção gerada"
+        }
+        if isUnsafeOCRStatus(item.statusOCR), item.hasTranscription {
+            return "OCR inseguro"
+        }
         if item.hasExport {
             return "Excel gerado"
         }
@@ -1698,8 +1736,14 @@ struct ContentView: View {
     }
 
     private func caseStatusColor(_ item: EssayCase) -> Color {
-        if item.hasExport {
+        if item.correction?.bloqueadaPorOCR == true {
+            return .orange
+        }
+        if item.correction?.notaFinal != nil {
             return .green
+        }
+        if isUnsafeOCRStatus(item.statusOCR), item.hasTranscription {
+            return .orange
         }
         if isOKStatus(item.statusOCR), item.isReadyForCorrection {
             return .blue
