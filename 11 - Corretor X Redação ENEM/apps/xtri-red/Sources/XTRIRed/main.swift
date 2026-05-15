@@ -1,6 +1,7 @@
 import AppKit
 import Security
 import SwiftUI
+import UniformTypeIdentifiers
 
 private let defaultVaultPath = "/Volumes/KINGSTON 2/apps/apps/corretor de redação/corretor x/11 - Corretor X Redação ENEM"
 
@@ -19,6 +20,7 @@ struct EssayCase: Identifiable, Hashable, Sendable {
     let id: String
     let caseID: String
     let directoryName: String
+    let studentName: String
     let title: String
     let theme: String
     let statusOCR: String
@@ -26,6 +28,7 @@ struct EssayCase: Identifiable, Hashable, Sendable {
     let entryURL: URL
     let exportURL: URL
     let hasExport: Bool
+    let isReadyForCorrection: Bool
 }
 
 struct BrainPrompt: Identifiable, Hashable {
@@ -38,6 +41,29 @@ struct BrainPrompt: Identifiable, Hashable {
 struct ProcessResult: Sendable {
     let exitCode: Int32
     let output: String
+}
+
+struct ImportSummary {
+    let created: Int
+    let readyForCorrection: Int
+    let pendingOCR: Int
+    let skipped: Int
+    let firstCaseDirectory: String?
+    let lastCaseID: String?
+
+    var logMessage: String {
+        var lines = [
+            "Importação concluída.",
+            "Casos criados: \(created)",
+            "Prontos para correção: \(readyForCorrection)",
+            "Aguardando OCR: \(pendingOCR)",
+            "Arquivos ignorados: \(skipped)"
+        ]
+        if let lastCaseID {
+            lines.append("Último caso: \(lastCaseID)")
+        }
+        return lines.joined(separator: "\n")
+    }
 }
 
 enum KeychainError: LocalizedError {
@@ -180,6 +206,71 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func importFolder() {
+        guard let theme = askForImportTheme() else { return }
+
+        let panel = NSOpenPanel()
+        panel.title = "Importar pasta de redações"
+        panel.message = "Escolha uma pasta com um arquivo por aluno."
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+
+        guard panel.runModal() == .OK, let sourceURL = panel.url else { return }
+
+        do {
+            let summary = try CaseImporter.importFolder(sourceURL: sourceURL, vaultURL: vaultURL, theme: theme)
+            refresh()
+            if let firstCaseDirectory = summary.firstCaseDirectory {
+                selectedCaseID = firstCaseDirectory
+            }
+            log = summary.logMessage
+        } catch {
+            log = "Falha ao importar pasta: \(error.localizedDescription)"
+        }
+    }
+
+    func importFiles() {
+        guard let theme = askForImportTheme() else { return }
+
+        let panel = NSOpenPanel()
+        panel.title = "Importar redação"
+        panel.message = "Escolha um ou mais arquivos. Cada arquivo vira um caso."
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.plainText, .pdf, .jpeg, .png, .heic, .tiff]
+
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+
+        do {
+            let summary = try CaseImporter.importFiles(panel.urls, vaultURL: vaultURL, theme: theme)
+            refresh()
+            if let firstCaseDirectory = summary.firstCaseDirectory {
+                selectedCaseID = firstCaseDirectory
+            }
+            log = summary.logMessage
+        } catch {
+            log = "Falha ao importar arquivo: \(error.localizedDescription)"
+        }
+    }
+
+    private func askForImportTheme() -> String? {
+        let alert = NSAlert()
+        alert.messageText = "Tema oficial do lote"
+        alert.informativeText = "Informe o tema comum das redações. Se deixar vazio, o caso será marcado como tema ausente."
+        alert.addButton(withTitle: "Importar")
+        alert.addButton(withTitle: "Cancelar")
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 520, height: 24))
+        textField.placeholderString = "Ex.: Perspectivas acerca do envelhecimento na sociedade brasileira"
+        alert.accessoryView = textField
+
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return nil }
+        return textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     func saveAPIKeyToKeychain() {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else {
@@ -247,6 +338,10 @@ final class AppModel: ObservableObject {
             log = "Nenhum caso selecionado."
             return
         }
+        guard selectedCase.isReadyForCorrection else {
+            log = "\(selectedCase.caseID) ainda não tem transcrição em redacao.txt. Faça OCR ou importe um .txt antes de corrigir."
+            return
+        }
         if !dryRun, !apiKeyAvailable {
             log = "Defina SABIA_API_KEY no campo seguro ou no ambiente antes de corrigir."
             return
@@ -264,7 +359,7 @@ final class AppModel: ObservableObject {
                     vaultURL: vaultURL,
                     caseDirectory: selectedCase.directoryName,
                     caseID: selectedCase.caseID,
-                    studentID: "Aluno \(selectedCase.caseID.replacingOccurrences(of: "CASO-", with: ""))",
+                    studentID: selectedCase.studentName,
                     apiKey: key,
                     dryRun: dryRun
                 )
@@ -327,6 +422,146 @@ enum ProcessRunner {
     }
 }
 
+enum CaseImporter {
+    private static let textExtensions: Set<String> = ["txt"]
+    private static let pendingOCRExtensions: Set<String> = [
+        "pdf", "jpg", "jpeg", "png", "heic", "tif", "tiff"
+    ]
+
+    static func importFolder(sourceURL: URL, vaultURL: URL, theme: String) throws -> ImportSummary {
+        let fileManager = FileManager.default
+        let urls = try fileManager.contentsOfDirectory(
+            at: sourceURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        let files = urls.filter { url in
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+            return values?.isDirectory != true
+        }
+        return try importFiles(files, vaultURL: vaultURL, theme: theme)
+    }
+
+    static func importFiles(_ files: [URL], vaultURL: URL, theme: String) throws -> ImportSummary {
+        let fileManager = FileManager.default
+        let entriesURL = vaultURL.appendingPathComponent("entradas")
+        try fileManager.createDirectory(at: entriesURL, withIntermediateDirectories: true)
+
+        var nextNumber = nextCaseNumber(entriesURL: entriesURL)
+        var created = 0
+        var readyForCorrection = 0
+        var pendingOCR = 0
+        var skipped = 0
+        var createdDirectories: [String] = []
+        var lastCaseID: String?
+
+        for sourceURL in files.sorted(by: { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }) {
+            let fileExtension = sourceURL.pathExtension.lowercased()
+            let isTextFile = textExtensions.contains(fileExtension)
+            let isOCRPendingFile = pendingOCRExtensions.contains(fileExtension)
+
+            guard isTextFile || isOCRPendingFile else {
+                skipped += 1
+                continue
+            }
+
+            let caseID = String(format: "CASO-%03d", nextNumber)
+            let directoryName = caseID.lowercased()
+            let caseURL = entriesURL.appendingPathComponent(directoryName, isDirectory: true)
+            nextNumber += 1
+
+            try fileManager.createDirectory(at: caseURL, withIntermediateDirectories: true)
+
+            let studentName = normalizedStudentName(from: sourceURL, fallback: "Aluno \(caseID.replacingOccurrences(of: "CASO-", with: ""))")
+            let themeStatus = theme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "ausente" : "verificado"
+            let originalName = "original.\(fileExtension.isEmpty ? "arquivo" : fileExtension)"
+            let originalURL = caseURL.appendingPathComponent(originalName)
+
+            try fileManager.copyItem(at: sourceURL, to: originalURL)
+            try write(theme, to: caseURL.appendingPathComponent("tema.txt"))
+            try write(themeStatus, to: caseURL.appendingPathComponent("status-tema.txt"))
+            try write(studentName, to: caseURL.appendingPathComponent("aluno-nome.txt"))
+            try write(
+                [
+                    "arquivo_original=\(sourceURL.lastPathComponent)",
+                    "tipo_importacao=\(isTextFile ? "texto" : "ocr_pendente")",
+                    "criado_em=\(ISO8601DateFormatter().string(from: Date()))"
+                ].joined(separator: "\n"),
+                to: caseURL.appendingPathComponent("metadados-importacao.txt")
+            )
+
+            if isTextFile {
+                let essayText = try readImportedText(sourceURL).trimmingCharacters(in: .whitespacesAndNewlines)
+                try write(essayText, to: caseURL.appendingPathComponent("redacao.txt"))
+                if essayText.isEmpty {
+                    try write("revisao_humana: arquivo .txt importado sem transcricao util.", to: caseURL.appendingPathComponent("status-ocr.txt"))
+                    pendingOCR += 1
+                } else {
+                    try write("ok: transcricao importada de arquivo .txt; sem OCR automatico.", to: caseURL.appendingPathComponent("status-ocr.txt"))
+                    readyForCorrection += 1
+                }
+            } else {
+                try write("", to: caseURL.appendingPathComponent("redacao.txt"))
+                try write("aguardando_ocr: arquivo original importado; transcricao pendente.", to: caseURL.appendingPathComponent("status-ocr.txt"))
+                pendingOCR += 1
+            }
+
+            created += 1
+            createdDirectories.append(directoryName)
+            lastCaseID = caseID
+        }
+
+        return ImportSummary(
+            created: created,
+            readyForCorrection: readyForCorrection,
+            pendingOCR: pendingOCR,
+            skipped: skipped,
+            firstCaseDirectory: createdDirectories.first,
+            lastCaseID: lastCaseID
+        )
+    }
+
+    private static func nextCaseNumber(entriesURL: URL) -> Int {
+        let directories = (try? FileManager.default.contentsOfDirectory(
+            at: entriesURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        let numbers = directories.compactMap { url -> Int? in
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { return nil }
+            let name = url.lastPathComponent.lowercased()
+            guard name.hasPrefix("caso-") else { return nil }
+            return Int(name.dropFirst(5))
+        }
+
+        return (numbers.max() ?? 0) + 1
+    }
+
+    private static func normalizedStudentName(from url: URL, fallback: String) -> String {
+        let rawName = url.deletingPathExtension().lastPathComponent
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+        let normalized = rawName
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? fallback : normalized
+    }
+
+    private static func readImportedText(_ url: URL) throws -> String {
+        if let text = try? String(contentsOf: url, encoding: .utf8) {
+            return text
+        }
+        return try String(contentsOf: url, encoding: .isoLatin1)
+    }
+
+    private static func write(_ text: String, to url: URL) throws {
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+}
+
 private func loadCases(vaultURL: URL) -> [EssayCase] {
     let entriesURL = vaultURL.appendingPathComponent("entradas")
     let exportsURL = vaultURL.appendingPathComponent("Cérebro do 1000/casos/exports")
@@ -342,6 +577,11 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
 
         let directoryName = url.lastPathComponent
         let caseID = directoryName.uppercased()
+        let defaultStudentName = "Aluno \(caseID.replacingOccurrences(of: "CASO-", with: ""))"
+        let importedStudentName = readText(url.appendingPathComponent("aluno-nome.txt"))
+        let studentName = importedStudentName.isEmpty
+            ? defaultStudentName
+            : importedStudentName
         let theme = readText(url.appendingPathComponent("tema.txt"))
         let statusOCR = readText(url.appendingPathComponent("status-ocr.txt"))
         let essayText = readText(url.appendingPathComponent("redacao.txt"))
@@ -352,13 +592,15 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
             id: directoryName,
             caseID: caseID,
             directoryName: directoryName,
+            studentName: studentName,
             title: "\(caseID) - \(theme.isEmpty ? "Tema não informado" : theme)",
             theme: theme,
             statusOCR: statusOCR,
             textPreview: preview,
             entryURL: url,
             exportURL: exportURL,
-            hasExport: FileManager.default.fileExists(atPath: exportURL.path)
+            hasExport: FileManager.default.fileExists(atPath: exportURL.path),
+            isReadyForCorrection: !essayText.isEmpty
         )
     }
     .sorted { $0.caseID < $1.caseID }
@@ -403,6 +645,12 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItemGroup {
+                Button("Importar Pasta") {
+                    model.importFolder()
+                }
+                Button("Importar Arquivo") {
+                    model.importFiles()
+                }
                 Button("Atualizar") {
                     model.refresh()
                 }
@@ -439,9 +687,9 @@ struct ContentView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
-                            Text(item.hasExport ? "Excel gerado" : "Sem Excel")
+                            Text(caseStatusLabel(item))
                                 .font(.caption2)
-                                .foregroundStyle(item.hasExport ? .green : .orange)
+                                .foregroundStyle(caseStatusColor(item))
                         }
                         .tag(item.id)
                     }
@@ -480,7 +728,7 @@ struct ContentView: View {
             }
             .padding()
         } else {
-            ContentUnavailableView("Nenhum caso encontrado", systemImage: "doc.text.magnifyingglass", description: Text("Crie uma pasta em entradas/caso-001 com tema.txt, redacao.txt e status-ocr.txt."))
+            ContentUnavailableView("Nenhum caso encontrado", systemImage: "doc.text.magnifyingglass", description: Text("Use Importar Pasta ou crie uma pasta em entradas/caso-001 com tema.txt, redacao.txt e status-ocr.txt."))
         }
     }
 
@@ -489,6 +737,9 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.caseID)
                     .font(.largeTitle.weight(.semibold))
+                Text(item.studentName)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
                 Text(item.theme.isEmpty ? "Tema não informado" : item.theme)
                     .font(.title3)
                     .foregroundStyle(.secondary)
@@ -500,10 +751,11 @@ struct ContentView: View {
                     Button("Dry-run") {
                         model.runSelectedCase(dryRun: true)
                     }
+                    .disabled(model.isRunning || !item.isReadyForCorrection)
                     Button("Corrigir") {
                         model.runSelectedCase(dryRun: false)
                     }
-                    .disabled(!model.apiKeyAvailable || model.isRunning)
+                    .disabled(!model.apiKeyAvailable || model.isRunning || !item.isReadyForCorrection)
                     Button("Abrir Excel") {
                         model.openExport()
                     }
@@ -576,6 +828,9 @@ struct ContentView: View {
 
     private func casePanel(_ item: EssayCase) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            Label(item.studentName, systemImage: "person.crop.circle")
+                .font(.callout)
+                .foregroundStyle(.secondary)
             Label(item.statusOCR.isEmpty ? "Status de transcrição não informado" : item.statusOCR, systemImage: "text.viewfinder")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -593,6 +848,26 @@ struct ContentView: View {
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    private func caseStatusLabel(_ item: EssayCase) -> String {
+        if item.hasExport {
+            return "Excel gerado"
+        }
+        if item.isReadyForCorrection {
+            return "Pronto para corrigir"
+        }
+        return "Aguardando OCR"
+    }
+
+    private func caseStatusColor(_ item: EssayCase) -> Color {
+        if item.hasExport {
+            return .green
+        }
+        if item.isReadyForCorrection {
+            return .blue
+        }
+        return .orange
     }
 
     private var brainPanel: some View {

@@ -171,3 +171,18 @@ Mudanças registradas:
 - Tentativas inválidas entram na aba `Auditoria` quando uma tentativa posterior recupera a chamada.
 - Se a validação não for recuperada, o Excel não é gerado e o caso recebe um arquivo `*.revisao-humana.txt`.
 - O bundle local `apps/xtri-red/dist/XTRI-RED.app` foi recompilado e verificado com assinatura ad-hoc em 2026-05-15.
+
+## [2026-05-15] feature | Upload lógico de redações no XTRI-RED
+
+Implementada importação local no XTRI-RED para lote e arquivos avulsos.
+
+Nota principal:
+
+- [[13 - XTRI-RED App Mac]]
+
+Comportamento registrado:
+
+- `Importar Pasta` cria um caso por arquivo encontrado na pasta selecionada.
+- `Importar Arquivo` aceita um ou mais arquivos selecionados manualmente.
+- Arquivos `.txt` viram casos prontos para correção, com `redacao.txt` preenchido.
+- PDFs e imagens são preservados como `original.ext`, marcados como `aguardando_ocr` e bloqueados para correção até haver transcrição.

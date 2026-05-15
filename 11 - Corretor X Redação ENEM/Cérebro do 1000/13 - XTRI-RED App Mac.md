@@ -8,11 +8,39 @@ Operar correções em lote no macOS usando o vault do Obsidian como cérebro met
 
 ## Papel do app
 
+- Importar uma pasta com um arquivo por aluno.
+- Importar um ou mais arquivos avulsos.
 - Listar casos em `entradas/caso-*`.
 - Mostrar tema, status de transcrição e prévia da redação.
 - Ler prompts/rubricas em `app-config/prompts`.
 - Executar dry-run e correção real via `scripts/run_caso_sabia.sh`.
 - Abrir o Excel gerado em `Cérebro do 1000/casos/exports`.
+
+## Upload Lógico
+
+Status em 2026-05-15: o app possui importação local para lote e arquivos avulsos.
+
+Fluxo recomendado para 500 redações:
+
+1. Organizar uma pasta com um arquivo por aluno.
+2. Clicar em `Importar Pasta`.
+3. Informar o tema oficial comum do lote.
+4. O XTRI-RED cria automaticamente `entradas/caso-*`.
+
+Arquivos `.txt` entram como transcrição pronta para correção. Arquivos `.pdf`, `.jpg`, `.jpeg`, `.png`, `.heic`, `.tif` e `.tiff` são copiados para o caso como `original.ext`, mas ficam com `status-ocr.txt = aguardando_ocr` e não são liberados para correção até existir texto em `redacao.txt`.
+
+Estrutura criada por arquivo:
+
+```text
+entradas/caso-001/
+  aluno-nome.txt
+  tema.txt
+  status-tema.txt
+  status-ocr.txt
+  redacao.txt
+  original.ext
+  metadados-importacao.txt
+```
 
 ## Atualização de Validação Sabiá
 
