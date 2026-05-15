@@ -159,6 +159,36 @@ struct PaddleOCRPayload: Decodable {
     }
 }
 
+struct TesseractOCRPayload: Decodable {
+    let ok: Bool
+    let engine: String?
+    let text: String
+    let characterCount: Int
+    let lineCount: Int
+    let rawCharacterCount: Int?
+    let qualityScore: Double?
+    let inferenceTimeS: Double?
+    let lang: String?
+    let psm: Int?
+    let status: String?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case engine
+        case text
+        case characterCount = "character_count"
+        case lineCount = "line_count"
+        case rawCharacterCount = "raw_character_count"
+        case qualityScore = "quality_score"
+        case inferenceTimeS = "inference_time_s"
+        case lang
+        case psm
+        case status
+        case error
+    }
+}
+
 struct OpenAIVisionOCRPayload: Decodable {
     let ok: Bool
     let engine: String?
@@ -947,6 +977,26 @@ enum CaseImporter {
     }
 
     private static func runImageOCR(originalURL: URL, caseURL: URL, caseID: String) throws -> OCRResult {
+        if let tesseractResult = try? runTesseractOCR(originalURL: originalURL, caseURL: caseURL),
+           tesseractResult.ok,
+           tesseractResult.characterCount >= 500,
+           !tesseractResult.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let status = tesseractResult.status ?? "parcial: OCR automatico por Tesseract; revisar transcricao antes de corrigir."
+            try write(tesseractResult.text, to: caseURL.appendingPathComponent("redacao.txt"))
+            try write(tesseractResult.text, to: caseURL.appendingPathComponent("redacao-tesseract.txt"))
+            try write("tesseract_draft", to: caseURL.appendingPathComponent("transcricao-fonte.txt"))
+            try write("false", to: caseURL.appendingPathComponent("transcricao-literal-validada.txt"))
+            try write(status, to: caseURL.appendingPathComponent("status-ocr.txt"))
+            try write(tesseractOCRMetadata(tesseractResult), to: caseURL.appendingPathComponent("ocr-tesseract.json"))
+            return OCRResult(
+                caseID: caseID,
+                characterCount: tesseractResult.characterCount,
+                lineCount: tesseractResult.lineCount,
+                status: status,
+                readyForCorrection: isCorrectionReady(essayText: tesseractResult.text, statusOCR: status)
+            )
+        }
+
         if let openAIResult = try? runOpenAIVisionOCR(originalURL: originalURL, caseURL: caseURL),
            openAIResult.ok,
            openAIResult.characterCount >= 100,
@@ -1020,6 +1070,52 @@ enum CaseImporter {
             status: status,
             readyForCorrection: isCorrectionReady(essayText: text, statusOCR: status)
         )
+    }
+
+    private static func runTesseractOCR(originalURL: URL, caseURL: URL) throws -> TesseractOCRPayload? {
+        let vaultURL = caseURL.deletingLastPathComponent().deletingLastPathComponent()
+        let projectRoot = vaultURL.deletingLastPathComponent().deletingLastPathComponent()
+        let pythonURL = projectRoot.appendingPathComponent(".venv/bin/python")
+        let scriptURL = vaultURL.appendingPathComponent("scripts/ocr_tesseract.py")
+
+        guard FileManager.default.isExecutableFile(atPath: pythonURL.path),
+              FileManager.default.fileExists(atPath: scriptURL.path) else {
+            return nil
+        }
+
+        let process = Process()
+        process.executableURL = pythonURL
+        process.arguments = [scriptURL.path, "--image", originalURL.path, "--lang", "por+eng", "--psm", "6"]
+        process.currentDirectoryURL = vaultURL
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = FileHandle.nullDevice
+
+        try process.run()
+        process.waitUntilExit()
+
+        let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        guard !output.isEmpty else { return nil }
+
+        return try JSONDecoder().decode(TesseractOCRPayload.self, from: output)
+    }
+
+    private static func tesseractOCRMetadata(_ payload: TesseractOCRPayload) throws -> String {
+        let metadata: [String: String] = [
+            "engine": payload.engine ?? "tesseract",
+            "character_count": "\(payload.characterCount)",
+            "raw_character_count": payload.rawCharacterCount.map { "\($0)" } ?? "",
+            "quality_score": payload.qualityScore.map { "\($0)" } ?? "",
+            "line_count": "\(payload.lineCount)",
+            "lang": payload.lang ?? "",
+            "psm": payload.psm.map { "\($0)" } ?? "",
+            "inference_time_s": payload.inferenceTimeS.map { "\($0)" } ?? "",
+            "status": payload.status ?? "",
+            "error": payload.error ?? "",
+        ]
+        let data = try JSONEncoder().encode(metadata)
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
 
     private static func runOpenAIVisionOCR(originalURL: URL, caseURL: URL) throws -> OpenAIVisionOCRPayload? {
