@@ -31,9 +31,6 @@ load_sabia_key_from_keychain() {
 
 if [[ "${CORRETOR_X_DRY_RUN:-}" == "1" ]]; then
   DRY_RUN=1
-elif ! load_sabia_key_from_keychain; then
-  echo "Erro: defina SABIA_API_KEY ou salve a chave no Keychain pelo XTRI-RED." >&2
-  exit 2
 fi
 
 if [[ ! -x "${PYTHON_BIN}" ]]; then
@@ -63,6 +60,7 @@ done
 
 STATUS_OCR="$(cat "${STATUS_OCR_FILE}")"
 STATUS_OCR_NORMALIZED="$(printf '%s' "${STATUS_OCR}" | tr '[:upper:]' '[:lower:]')"
+OCR_UNSAFE=0
 
 if [[ "${STATUS_OCR_NORMALIZED}" == ok:* && -s "${REDACAO_LITERAL_FILE}" ]]; then
   REDACAO_FILE="${REDACAO_LITERAL_FILE}"
@@ -76,8 +74,28 @@ else
 fi
 
 if [[ "${STATUS_OCR_NORMALIZED}" != ok:* ]]; then
-  echo "Aviso: status OCR não validado; correção será gerada com alerta de baixa confiança." >&2
+  case "${STATUS_OCR_NORMALIZED}" in
+    *aguardando_ocr*|*ocr_degradado*|*degradado*|*parcial*|*ocr\ seguro*|*baixa*|*ilegivel*|*ilegível*|*incerta*|*manual\ assistida*|*sem\ ocr*|*revisao*|*revisão*|*revisar*|*pendente*|*nao\ valid*|*não\ valid*|*trecho\ critico*|*trecho\ crítico*|*safe_for_correction=false*)
+      OCR_UNSAFE=1
+      ;;
+  esac
+fi
+
+if [[ "${OCR_UNSAFE}" == "1" && "${CORRETOR_X_ALLOW_UNSAFE_OCR:-}" != "1" ]]; then
+  echo "Aviso: status OCR não validado; será gerado relatório sem nota para evitar correção contaminada." >&2
   echo "${STATUS_OCR}" >&2
+elif [[ "${OCR_UNSAFE}" == "1" ]]; then
+  echo "Aviso: status OCR não validado; correção forçada por CORRETOR_X_ALLOW_UNSAFE_OCR=1." >&2
+  echo "${STATUS_OCR}" >&2
+fi
+
+if [[ "${DRY_RUN}" != "1" ]]; then
+  if [[ "${OCR_UNSAFE}" != "1" || "${CORRETOR_X_ALLOW_UNSAFE_OCR:-}" == "1" ]]; then
+    if ! load_sabia_key_from_keychain; then
+      echo "Erro: defina SABIA_API_KEY ou salve a chave no Keychain pelo XTRI-RED." >&2
+      exit 2
+    fi
+  fi
 fi
 
 set -- \
@@ -119,6 +137,10 @@ set -- "$@" --out-xlsx "${OUT_XLSX}"
 
 if [[ "${DRY_RUN}" == "1" ]]; then
   set -- "$@" --dry-run
+fi
+
+if [[ "${CORRETOR_X_ALLOW_UNSAFE_OCR:-}" == "1" ]]; then
+  set -- "$@" --allow-unsafe-ocr-scoring
 fi
 
 "${PYTHON_BIN}" scripts/corrigir_com_sabia.py "$@"

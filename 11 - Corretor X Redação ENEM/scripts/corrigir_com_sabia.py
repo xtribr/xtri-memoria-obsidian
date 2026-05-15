@@ -1497,6 +1497,65 @@ def build_alertas(status_tema: str, status_ocr: str, resultado: ResultadoCorreca
     return "; ".join(dict.fromkeys(alertas))
 
 
+def is_unsafe_ocr_status(status_ocr: str) -> bool:
+    """Return True when the transcript cannot be trusted for ENEM scoring."""
+    normalized = strip_accents(status_ocr).strip().lower()
+    if not normalized:
+        return False
+
+    safe_prefixes = (
+        "ok:",
+        "validado:",
+        "literal_validada:",
+        "literal validada:",
+        "nao necessario",
+        "não necessario",
+        "nao necessário",
+        "não necessário",
+    )
+    if normalized.startswith(safe_prefixes):
+        return False
+
+    unsafe_markers = (
+        "aguardando_ocr",
+        "ocr_degradado",
+        "degradado",
+        "parcial",
+        "ocr seguro",
+        "baixa",
+        "ilegivel",
+        "incerta",
+        "manual assistida",
+        "sem ocr",
+        "revisao",
+        "revisar",
+        "pendente",
+        "nao valid",
+        "não valid",
+        "trecho critico",
+        "trecho crítico",
+        "safe_for_correction=false",
+    )
+    return any(marker in normalized for marker in unsafe_markers)
+
+
+def build_ocr_unsafe_alertas(status_tema: str) -> str:
+    alertas: list[str] = []
+    status_tema_normalizado = strip_accents(status_tema).strip().lower()
+    if status_tema_normalizado == "inferido":
+        alertas.append("tema_inferido")
+    elif status_tema_normalizado == "ausente":
+        alertas.append("tema_ausente")
+    alertas.extend(
+        [
+            "ocr_nao_validado",
+            "correcao_bloqueada_por_ocr",
+            "c1_nao_auditavel_sem_transcricao_literal",
+        ]
+    )
+    return "; ".join(dict.fromkeys(alertas))
+
+
 def reset_worksheet(ws: Any) -> None:
     for merged_range in list(ws.merged_cells.ranges):
         ws.unmerge_cells(str(merged_range))
@@ -1937,6 +1996,167 @@ def fill_workbook(
     wb.save(output_path)
 
 
+def fill_ocr_unsafe_workbook(
+    template_path: Path,
+    output_path: Path,
+    case_id: str,
+    aluno_nome: str,
+    aluno_escola: str,
+    tema: str,
+    status_tema: str,
+    status_ocr: str,
+    redacao: str,
+    num_linhas: int,
+) -> None:
+    """Generate a non-scored workbook when OCR is not safe enough for grading."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(template_path, output_path)
+    wb = load_workbook(output_path)
+    data_correcao = datetime.now().replace(microsecond=0)
+
+    comentario_bloqueio = (
+        "Correção por competência não executada: a transcrição OCR não foi validada "
+        "como literal. Uma nota de C1 baseada nesse texto poderia confundir erros reais "
+        "do aluno com erros de leitura da imagem."
+    )
+    comentario_demais = (
+        "Correção não executada porque a base textual está insegura. Repertório, "
+        "argumentação, coesão e proposta também podem ser distorcidos por OCR parcial."
+    )
+    sugestao = (
+        "Reprocessar a imagem com maior resolução, melhor enquadramento e boa iluminação; "
+        "depois rodar novamente para gerar notas."
+    )
+    alertas = build_ocr_unsafe_alertas(status_tema)
+
+    ws = wb["Devolutiva"] if "Devolutiva" in wb.sheetnames else wb.create_sheet("Devolutiva")
+    reset_worksheet(ws)
+    ws.append(DEVOLUTIVA_HEADERS)
+    ws.append(
+        [
+            case_id,
+            data_correcao,
+            aluno_nome,
+            aluno_escola,
+            tema,
+            status_tema,
+            False,
+            "",
+            False,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            False,
+            False,
+            comentario_bloqueio,
+            comentario_demais,
+            comentario_demais,
+            comentario_demais,
+            comentario_demais,
+            sugestao,
+            sugestao,
+            sugestao,
+            sugestao,
+            sugestao,
+            "baixa",
+            alertas,
+        ]
+    )
+    ws["B2"].number_format = "yyyy-mm-dd hh:mm:ss"
+    style_devolutiva(ws)
+
+    ws_resumo = wb["Resumo"] if "Resumo" in wb.sheetnames else wb.create_sheet("Resumo")
+    reset_worksheet(ws_resumo)
+    ws_resumo.append(RESUMO_HEADERS)
+    ws_resumo.append(
+        [
+            case_id,
+            data_correcao,
+            aluno_escola,
+            tema,
+            None,
+            "Não calculado",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "",
+            None,
+            None,
+            "",
+            "",
+            "",
+            None,
+            None,
+            None,
+            "baixa",
+            None,
+            None,
+        ]
+    )
+    ws_resumo["B2"].number_format = "yyyy-mm-dd hh:mm:ss"
+    style_resumo(ws_resumo)
+
+    ws_calibracao = wb["Calibração"] if "Calibração" in wb.sheetnames else wb.create_sheet("Calibração")
+    reset_worksheet(ws_calibracao)
+    ws_calibracao.append(CALIBRACAO_HEADERS)
+    ws_calibracao.append(
+        [
+            case_id,
+            "OCR",
+            "bloqueio_correcao",
+            "transcricao_nao_validada",
+            status_ocr,
+            "grave",
+            "",
+            "A transcrição não é segura para distinguir erro do aluno de erro de OCR.",
+        ]
+    )
+    style_calibracao(ws_calibracao)
+
+    ws_auditoria = wb["Auditoria"] if "Auditoria" in wb.sheetnames else wb.create_sheet("Auditoria")
+    reset_worksheet(ws_auditoria)
+    ws_auditoria.append(AUDITORIA_HEADERS)
+    payload = {
+        "acao": "correcao_bloqueada_por_ocr",
+        "status_ocr": status_ocr,
+        "status_tema": status_tema,
+        "num_linhas_estimadas": num_linhas,
+        "caracteres_transcricao": len(redacao),
+        "motivo": "transcricao_nao_validada_como_literal",
+    }
+    ws_auditoria.append(
+        [
+            str(uuid.uuid4()),
+            case_id,
+            data_correcao,
+            "ocr_gate",
+            "local",
+            DEFAULT_PROMPT_VERSION,
+            prompt_hash(f"ocr_gate:{status_ocr}"),
+            json.dumps(payload, ensure_ascii=False),
+            True,
+            "",
+            0.0,
+            0,
+            0,
+            0.0,
+        ]
+    )
+    ws_auditoria["C2"].number_format = "yyyy-mm-dd hh:mm:ss"
+    ws_auditoria["K2"].number_format = "0.000"
+    ws_auditoria["N2"].number_format = "0.000000"
+    style_auditoria(ws_auditoria)
+
+    wb.save(output_path)
+
+
 def write_revisao_humana_marker(
     output_path: Path,
     case_id: str,
@@ -1990,6 +2210,14 @@ def main() -> int:
     parser.add_argument("--retries", default=1, type=int)
     parser.add_argument("--dry-run", action="store_true", help="Não chama API; só valida entradas.")
     parser.add_argument(
+        "--allow-unsafe-ocr-scoring",
+        action="store_true",
+        help=(
+            "Força correção mesmo com OCR parcial/degradado. Use apenas para auditoria, "
+            "pois C1 pode confundir erro do aluno com erro de leitura."
+        ),
+    )
+    parser.add_argument(
         "--brain-prompts-dir",
         type=Path,
         default=Path("app-config/prompts"),
@@ -2012,16 +2240,38 @@ def main() -> int:
     status_tema = args.status_tema or ("ausente" if tema == "Tema oficial não informado." else infer_status_tema(tema))
     num_linhas = args.num_linhas if args.num_linhas is not None else estimate_num_linhas(redacao)
     tangenciamento_c2_detectado = args.tangenciamento_c2
+    ocr_inseguro = is_unsafe_ocr_status(args.status_ocr)
+    aluno_nome = args.aluno_nome or args.aluno_id
 
     if args.dry_run:
         print("Entradas válidas.")
         print(f"Tema: {len(tema)} caracteres")
         print(f"Status do tema: {status_tema}")
         print(f"Status de anulação: {args.status_anulacao}")
+        print(f"OCR seguro para nota: {'false' if ocr_inseguro else 'true'}")
         print(f"Número de linhas estimadas: {num_linhas}")
         print(f"Tangenciamento C2: {'true' if tangenciamento_c2_detectado else 'false'}")
         print(f"Redação: {len(redacao)} caracteres")
         print("Dry-run: nenhuma chamada ao Sabiá foi feita.")
+        return 0
+
+    if ocr_inseguro and not args.allow_unsafe_ocr_scoring:
+        fill_ocr_unsafe_workbook(
+            args.template_xlsx,
+            args.out_xlsx,
+            args.case_id,
+            aluno_nome,
+            args.aluno_escola,
+            tema,
+            status_tema,
+            args.status_ocr,
+            redacao,
+            num_linhas,
+        )
+        print("Correção ENEM bloqueada: OCR/transcrição não validada como literal.")
+        print("Notas não calculadas para evitar C1 e nota final contaminadas por erro de leitura.")
+        print(f"Status OCR: {args.status_ocr}")
+        print(f"Excel salvo em: {args.out_xlsx}")
         return 0
 
     api_key = os.environ.get("SABIA_API_KEY")
@@ -2029,7 +2279,6 @@ def main() -> int:
         print("Erro: defina SABIA_API_KEY no ambiente. Nunca coloque a chave no repositório.", file=sys.stderr)
         return 2
 
-    aluno_nome = args.aluno_nome or args.aluno_id
     metadados = build_metadados_redacao(
         args.case_id,
         aluno_nome,
