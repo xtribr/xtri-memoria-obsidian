@@ -31,6 +31,63 @@ struct EssayCase: Identifiable, Hashable, Sendable {
     let hasTranscription: Bool
     let isReadyForCorrection: Bool
     let canRunOCR: Bool
+    let correction: CorrectionSummary?
+}
+
+struct CorrectionSummary: Decodable, Hashable, Sendable {
+    let idRedacao: String
+    let dataCorrecao: String?
+    let alunoNome: String?
+    let alunoEscola: String?
+    let tema: String
+    let statusTema: String
+    let statusOCR: String
+    let anulada: Bool
+    let motivosAnulacao: [String]
+    let tangenciamento: Bool
+    let notaFinal: Int?
+    let confiancaGeral: String
+    let alertas: String
+    let bloqueadaPorOCR: Bool
+    let competencias: [CompetencyCorrection]
+
+    enum CodingKeys: String, CodingKey {
+        case idRedacao = "id_redacao"
+        case dataCorrecao = "data_correcao"
+        case alunoNome = "aluno_nome"
+        case alunoEscola = "aluno_escola"
+        case tema
+        case statusTema = "status_tema"
+        case statusOCR = "status_ocr"
+        case anulada
+        case motivosAnulacao = "motivos_anulacao"
+        case tangenciamento
+        case notaFinal = "nota_final"
+        case confiancaGeral = "confianca_geral"
+        case alertas
+        case bloqueadaPorOCR = "bloqueada_por_ocr"
+        case competencias
+    }
+}
+
+struct CompetencyCorrection: Decodable, Hashable, Sendable {
+    let competencia: String
+    let nota: Int?
+    let comentario: String
+    let sugestao: String
+    let evidencia: String
+    let confianca: String
+    let tetoTangenciamentoAplicado: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case competencia
+        case nota
+        case comentario
+        case sugestao
+        case evidencia
+        case confianca
+        case tetoTangenciamentoAplicado = "teto_tangenciamento_aplicado"
+    }
 }
 
 struct ProcessResult: Sendable {
@@ -1133,6 +1190,7 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
         let statusOCR = readText(url.appendingPathComponent("status-ocr.txt"))
         let essayText = readBestTranscription(in: url)
         let exportURL = exportsURL.appendingPathComponent("\(caseID).xlsx")
+        let correctionURL = exportURL.deletingPathExtension().appendingPathExtension("correcao.json")
         let canRunOCR = originalImageURL(in: url) != nil
         let hasTranscription = !essayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
@@ -1149,10 +1207,17 @@ private func loadCases(vaultURL: URL) -> [EssayCase] {
             hasExport: FileManager.default.fileExists(atPath: exportURL.path),
             hasTranscription: hasTranscription,
             isReadyForCorrection: hasTranscription,
-            canRunOCR: canRunOCR
+            canRunOCR: canRunOCR,
+            correction: loadCorrectionSummary(correctionURL)
         )
     }
     .sorted { $0.caseID < $1.caseID }
+}
+
+private func loadCorrectionSummary(_ url: URL) -> CorrectionSummary? {
+    guard let data = try? Data(contentsOf: url) else { return nil }
+    let decoder = JSONDecoder()
+    return try? decoder.decode(CorrectionSummary.self, from: data)
 }
 
 private func readText(_ url: URL) -> String {
@@ -1303,10 +1368,10 @@ struct ContentView: View {
     @ViewBuilder
     private var detail: some View {
         if let item = model.selectedCase {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
                 header(for: item)
                 Divider()
-                casePanel(item)
+                caseDashboard(item)
                 Divider()
                 logPanel
             }
@@ -1449,6 +1514,176 @@ struct ContentView: View {
         }
     }
 
+    private func caseDashboard(_ item: EssayCase) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                correctionHero(item)
+                competencyGrid(item)
+                transcriptionPanel(item)
+            }
+            .padding(.vertical, 14)
+        }
+    }
+
+    private func correctionHero(_ item: EssayCase) -> some View {
+        let correction = item.correction
+        return HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Nota")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                Text(scoreText(correction?.notaFinal))
+                    .font(.system(size: 54, weight: .bold, design: .rounded))
+                    .foregroundStyle(correction?.bloqueadaPorOCR == true ? .orange : .primary)
+                    .monospacedDigit()
+                Text(statusHeadline(item))
+                    .font(.headline)
+                    .foregroundStyle(statusColor(item))
+            }
+            .frame(width: 190, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    StatusPill(text: "Confiança \(correction?.confiancaGeral ?? "pendente")", color: confidenceColor(correction?.confiancaGeral))
+                    if correction?.tangenciamento == true {
+                        StatusPill(text: "Tangenciamento", color: .orange)
+                    }
+                    if correction?.anulada == true {
+                        StatusPill(text: "Anulada", color: .red)
+                    }
+                    if correction?.bloqueadaPorOCR == true {
+                        StatusPill(text: "OCR bloqueado", color: .orange)
+                    }
+                }
+
+                Text(primaryMessage(item))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let alertas = correction?.alertas, !alertas.isEmpty {
+                    Label(alertas, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func competencyGrid(_ item: EssayCase) -> some View {
+        let competencias = orderedCompetencies(item.correction)
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 12)], alignment: .leading, spacing: 12) {
+            ForEach(competencias, id: \.competencia) { competency in
+                CompetencyCard(competency: competency)
+            }
+        }
+    }
+
+    private func transcriptionPanel(_ item: EssayCase) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Transcrição")
+                        .font(.headline)
+                    Label(item.statusOCR.isEmpty ? "Status de transcrição não informado" : item.statusOCR, systemImage: "text.viewfinder")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if item.canRunOCR {
+                    Button("Abrir imagem") {
+                        model.openOriginalForSelectedCase()
+                    }
+                }
+                Button("Salvar transcrição") {
+                    model.saveTranscriptionForSelectedCase()
+                }
+                .disabled(model.isRunning || model.transcriptionDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            TextEditor(text: $model.transcriptionDraft)
+                .font(.system(.body, design: .serif))
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .frame(minHeight: 230)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func orderedCompetencies(_ correction: CorrectionSummary?) -> [CompetencyCorrection] {
+        let existing = correction?.competencias ?? []
+        if !existing.isEmpty {
+            return existing.sorted { $0.competencia < $1.competencia }
+        }
+        return ["C1", "C2", "C3", "C4", "C5"].map {
+            CompetencyCorrection(
+                competencia: $0,
+                nota: nil,
+                comentario: "Aguardando correção.",
+                sugestao: "Rode a correção para gerar a devolutiva desta competência.",
+                evidencia: "",
+                confianca: "pendente",
+                tetoTangenciamentoAplicado: false
+            )
+        }
+    }
+
+    private func scoreText(_ score: Int?) -> String {
+        guard let score else { return "—" }
+        return "\(score)"
+    }
+
+    private func statusHeadline(_ item: EssayCase) -> String {
+        if item.correction?.bloqueadaPorOCR == true {
+            return "Sem nota: OCR inseguro"
+        }
+        if item.correction?.notaFinal != nil {
+            return "Correção gerada"
+        }
+        if item.hasTranscription {
+            return "Aguardando correção"
+        }
+        return "Aguardando OCR"
+    }
+
+    private func primaryMessage(_ item: EssayCase) -> String {
+        if item.correction?.bloqueadaPorOCR == true {
+            return "A transcrição não foi aceita como literal. O app bloqueou a nota para evitar que C1 e a nota final sejam contaminadas por erro de OCR."
+        }
+        if item.correction != nil {
+            return "Notas e comentários carregados da devolutiva. O Excel continua disponível para entrega e auditoria."
+        }
+        return "Importe, leia por OCR ou salve uma transcrição literal; depois rode a correção para ver a nota e a devolutiva aqui."
+    }
+
+    private func statusColor(_ item: EssayCase) -> Color {
+        if item.correction?.bloqueadaPorOCR == true {
+            return .orange
+        }
+        if item.correction?.notaFinal != nil {
+            return .green
+        }
+        if item.hasTranscription {
+            return .blue
+        }
+        return .orange
+    }
+
+    private func confidenceColor(_ value: String?) -> Color {
+        let normalized = value?.folding(options: .diacriticInsensitive, locale: .current).lowercased() ?? ""
+        if normalized == "alta" { return .green }
+        if normalized == "media" { return .orange }
+        if normalized == "pendente" { return .secondary }
+        return .red
+    }
+
     private func caseStatusLabel(_ item: EssayCase) -> String {
         if item.hasExport {
             return "Excel gerado"
@@ -1489,6 +1724,93 @@ struct ContentView: View {
             .frame(height: 120)
             .background(Color(nsColor: .controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+}
+
+struct StatusPill: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+    }
+}
+
+struct CompetencyCard: View {
+    let competency: CompetencyCorrection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(competency.competencia)
+                        .font(.title3.weight(.bold))
+                    Text(competencyTitle(competency.competencia))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(scoreText)
+                    .font(.title.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(scoreColor)
+            }
+
+            Text(competency.comentario)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .lineLimit(5)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !competency.evidencia.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Label(competency.evidencia, systemImage: "quote.opening")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Divider()
+
+            Text(competency.sugestao)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 210, alignment: .topLeading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var scoreText: String {
+        guard let nota = competency.nota else { return "—" }
+        return "\(nota)"
+    }
+
+    private var scoreColor: Color {
+        guard let nota = competency.nota else { return .secondary }
+        if nota >= 160 { return .green }
+        if nota >= 120 { return .orange }
+        return .red
+    }
+
+    private func competencyTitle(_ competencia: String) -> String {
+        switch competencia {
+        case "C1": return "Modalidade escrita"
+        case "C2": return "Tema e repertório"
+        case "C3": return "Projeto de texto"
+        case "C4": return "Coesão"
+        case "C5": return "Intervenção"
+        default: return "Competência"
         }
     }
 }

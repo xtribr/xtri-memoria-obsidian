@@ -1908,6 +1908,108 @@ def build_auditoria_rows(case_id: str, resultado: ResultadoCorrecao) -> list[lis
     return rows
 
 
+def summary_json_path(output_path: Path) -> Path:
+    return output_path.with_suffix(".correcao.json")
+
+
+def write_scored_summary_json(
+    output_path: Path,
+    case_id: str,
+    aluno_nome: str,
+    aluno_escola: str,
+    tema: str,
+    status_tema: str,
+    status_ocr: str,
+    resultado: ResultadoCorrecao,
+) -> None:
+    por_competencia = avaliacoes_por_competencia(resultado.avaliacoes)
+
+    def competencia_payload(competencia: str) -> dict[str, Any]:
+        avaliacao = por_competencia[competencia.lower()]
+        raw = raw_competencia(resultado, competencia)
+        return {
+            "competencia": competencia,
+            "nota": avaliacao.nota_corretor_x,
+            "comentario": avaliacao.comentario_do_erro,
+            "sugestao": avaliacao.sugestao_de_melhoria,
+            "evidencia": avaliacao.evidencia_no_texto,
+            "confianca": confidence_to_excel(avaliacao.nivel_confianca),
+            "teto_tangenciamento_aplicado": avaliacao.teto_tangenciamento_aplicado,
+            "raw": raw,
+        }
+
+    payload = {
+        "id_redacao": case_id,
+        "data_correcao": datetime.now().replace(microsecond=0).isoformat(),
+        "aluno_nome": aluno_nome,
+        "aluno_escola": aluno_escola,
+        "tema": tema,
+        "status_tema": status_tema,
+        "status_ocr": status_ocr,
+        "anulada": resultado.anulado,
+        "motivos_anulacao": resultado.motivos_anulacao,
+        "tangenciamento": resultado.tangenciamento,
+        "nota_final": resultado.nota_final,
+        "confianca_geral": confianca_geral(resultado.avaliacoes),
+        "alertas": build_alertas(status_tema, status_ocr, resultado),
+        "bloqueada_por_ocr": False,
+        "competencias": [competencia_payload(competencia) for competencia in COMPETENCIAS],
+    }
+    summary_json_path(output_path).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def write_ocr_unsafe_summary_json(
+    output_path: Path,
+    case_id: str,
+    aluno_nome: str,
+    aluno_escola: str,
+    tema: str,
+    status_tema: str,
+    status_ocr: str,
+) -> None:
+    comentario = (
+        "Correção por competência não executada: a transcrição OCR não foi validada "
+        "como literal. Uma nota baseada nesse texto poderia confundir erros reais "
+        "do aluno com erros de leitura da imagem."
+    )
+    payload = {
+        "id_redacao": case_id,
+        "data_correcao": datetime.now().replace(microsecond=0).isoformat(),
+        "aluno_nome": aluno_nome,
+        "aluno_escola": aluno_escola,
+        "tema": tema,
+        "status_tema": status_tema,
+        "status_ocr": status_ocr,
+        "anulada": False,
+        "motivos_anulacao": [],
+        "tangenciamento": False,
+        "nota_final": None,
+        "confianca_geral": "baixa",
+        "alertas": build_ocr_unsafe_alertas(status_tema),
+        "bloqueada_por_ocr": True,
+        "competencias": [
+            {
+                "competencia": competencia,
+                "nota": None,
+                "comentario": comentario,
+                "sugestao": "Reprocessar a imagem ou validar a transcrição literal antes de corrigir.",
+                "evidencia": "",
+                "confianca": "baixa",
+                "teto_tangenciamento_aplicado": False,
+                "raw": {},
+            }
+            for competencia in COMPETENCIAS
+        ],
+    }
+    summary_json_path(output_path).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def fill_workbook(
     template_path: Path,
     output_path: Path,
@@ -1994,6 +2096,16 @@ def fill_workbook(
     style_auditoria(ws_auditoria)
 
     wb.save(output_path)
+    write_scored_summary_json(
+        output_path,
+        case_id,
+        aluno_nome,
+        aluno_escola,
+        tema,
+        status_tema,
+        status_ocr,
+        resultado,
+    )
 
 
 def fill_ocr_unsafe_workbook(
@@ -2155,6 +2267,15 @@ def fill_ocr_unsafe_workbook(
     style_auditoria(ws_auditoria)
 
     wb.save(output_path)
+    write_ocr_unsafe_summary_json(
+        output_path,
+        case_id,
+        aluno_nome,
+        aluno_escola,
+        tema,
+        status_tema,
+        status_ocr,
+    )
 
 
 def write_revisao_humana_marker(
