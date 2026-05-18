@@ -325,3 +325,56 @@ Decisão:
 - em status parcial, o runner usa `redacao.txt` e emite aviso;
 - o status OCR é enviado ao Sabiá para reduzir confiança e gerar alerta no Excel;
 - status `ok` continua usando `redacao-literal.txt` como fonte preferencial.
+
+## [2026-05-17] ingest | Vault Questões ENEM (branch itens-enem-historico)
+
+Criada branch `itens-enem-historico` no repositório `xtribr/xtri-memoria-obsidian` contendo vault Obsidian autônomo com 3.123 questões oficiais do ENEM 2009–2025, geradas pela API `https://api.questoes.xtri.online/api/` via pipeline em 6 fases.
+
+Commit: `fd1373e` em 2026-05-17 06:05 BRT.
+
+Estrutura:
+
+- `_build_vault.py` (738 LoC) puxa API e gera 3.123 notas .md com frontmatter
+- Fases 3–5 (OCR + spotcheck + correções)
+- Fase 6 (`_phase6_*.py`) é a classificação canônica: Claude lendo `context + alternativesIntroduction + alternatives` do detail endpoint
+- 95,7% classificadas como `text-high`, 4,2% `text-medium`, zero indeterminadas
+
+Notas principais:
+
+- [[Vault Questões ENEM - Histórico API]]
+
+Observação: o vault contém 3.123 questões com IDs Django (range 14546–17672), enquanto a tabela `itens` do Supabase `fbykcqcssykopvcrsfoo` tem 3.686 itens com `co_item` INEP (range 5773–150767). Os IDs são incompatíveis — matching só por chave composta `(ano, sg_area, habilidade, posição)`.
+
+## [2026-05-18] audit | Diff cruzado API XTRI vs Supabase banco de questões
+
+Confirmadas as diferenças entre as duas fontes de itens ENEM:
+
+- API XTRI: 3.123 questões, 2009–2025, só aplicação regular.
+- Supabase `itens`: 3.686 itens, 2010–2024, com reaplicações e ENEM Digital 2020.
+- API tem 2009 e 2025 que o Supabase ainda não tem.
+- Supabase tem 284 reaplicações + 360 questões a mais em 2020 (ENEM Digital) que a API não tem.
+- TRI: Supabase tem 98,8% de cobertura de `nu_param_b`; API tem 80,8%.
+
+Notas principais:
+
+- [[Vault Questões ENEM - Histórico API]]
+- [[Supabase - banco de questões]]
+- [[API Própria - Questões XTRI]]
+
+Bloqueio:
+
+- Não há JOIN direto pelo ID. Matching exige chave composta `(ano, sg_area, co_habilidade, posição)`.
+
+## [2026-05-18] manutenção | Regeneração idempotente do _index.md do vault de questões
+
+Adicionado `_phase7_index_refresh.py` na branch `itens-enem-historico`. Script lê os frontmatters reais das 3.123 questões e regenera `_index.md` com distribuições corretas, substituindo a versão estática que ainda mostrava 1.096 indeterminadas (estado pré-Fase 6).
+
+Notas principais:
+
+- [[Vault Questões ENEM - Histórico API]]
+
+Próximas ações:
+
+- Decidir política de merge da branch `itens-enem-historico` na `main`.
+- Importar `nu_param_b` do Supabase para as 600 questões da API que faltam TRI.
+- Criar `_phase8` para refinar as 759 questões de Matemática em sub-disciplinas.

@@ -43,6 +43,7 @@ Este arquivo é content-oriented: lista as páginas importantes da wiki com resu
 - [[Checklist - Auditoria do Schema Banco de Questões]] - checklist de comparação entre requisito e schema real.
 - [[Auditoria - Schema Real Banco de Questões]] - achados reais do Supabase `banco de questões`.
 - [[Auditoria - API Própria Questões XTRI]] - auditoria controlada das respostas reais da API pública de questões.
+- [[Vault Questões ENEM - Histórico API]] - vault Obsidian autônomo com 3.123 questões classificadas (branch `itens-enem-historico`), diff cruzado com Supabase.
 
 ## ENEM, TRI e SISU
 
